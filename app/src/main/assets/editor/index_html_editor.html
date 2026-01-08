@@ -23,13 +23,18 @@
             background: white;
             box-shadow: 0 5px 15px rgba(0,0,0,0.2);
             box-sizing: border-box;
-            font-size: 22px;
+            font-size: 22px !important; /* Force the default font size */
             line-height: 2.0;
             outline: none;
             overflow-wrap: break-word;
         }
 
         u { text-underline-offset: 4px; }
+
+        /* Make bullet size consistent with line height */
+        li {
+            font-size: inherit;
+        }
 
         @media print {
             @page { size: A4; margin: 1in; }
@@ -47,6 +52,10 @@
 
     // Enable CSS mode for commands
     document.execCommand('styleWithCSS', false, true);
+
+    function setDefaultFontSize(size) {
+        editor.style.fontSize = size;
+    }
 
     function execCmd(command, value) {
         editor.focus();

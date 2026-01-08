@@ -68,11 +68,12 @@
                 android:layout_height="wrap_content"
                 android:prompt="@string/select_font" />
 
-            <!-- Font Size Spinner -->
-            <Spinner
-                android:id="@+id/fontSizeSpinner"
+            <!-- Font Size Button -->
+            <Button
+                android:id="@+id/fontSizeButton"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                android:layout_height="wrap_content"
+                android:text="سائز" />
 
             <!-- Color Picker Button -->
             <Button
@@ -107,21 +108,21 @@
                 android:id="@+id/alignLeftButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Left"/>
+                android:text="بائیں"/>
 
             <!-- Align Center -->
             <Button
                 android:id="@+id/alignCenterButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Center"/>
+                android:text="درمیان"/>
 
             <!-- Align Right -->
             <Button
                 android:id="@+id/alignRightButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Right"/>
+                android:text="دائیں"/>
 
             <!-- Bullets -->
             <Button

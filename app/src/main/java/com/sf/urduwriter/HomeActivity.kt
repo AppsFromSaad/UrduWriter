@@ -1,9 +1,8 @@
 package com.sf.urduwriter
 
 import android.content.Intent
+import android.graphics.Typeface
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.sf.urduwriter.databinding.ActivityHomeBinding
@@ -20,9 +19,24 @@ class HomeActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         setSupportActionBar(binding.toolbar)
+        supportActionBar?.title = "Urdu Writer"
 
-        binding.newDocumentFab.setOnClickListener {
+        // Set custom font
+        try {
+            val jameelNooriFont = Typeface.createFromAsset(assets, "fonts/Jameel_noori_nastaleeq.ttf")
+            binding.newDocumentButton.typeface = jameelNooriFont
+            binding.fontManagerButton.typeface = jameelNooriFont
+            binding.recentDocumentsLabel.typeface = jameelNooriFont
+        } catch (e: Exception) {
+            // Font not found, but the app will continue to work
+        }
+
+        binding.newDocumentButton.setOnClickListener {
             startActivity(Intent(this, EditorActivity::class.java))
+        }
+
+        binding.fontManagerButton.setOnClickListener {
+            startActivity(Intent(this, FontManagerActivity::class.java))
         }
 
         setupRecyclerView()
@@ -31,21 +45,6 @@ class HomeActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         loadDocuments()
-    }
-
-    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
-        menuInflater.inflate(R.menu.home_menu, menu)
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.action_font_manager -> {
-                startActivity(Intent(this, FontManagerActivity::class.java))
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
-        }
     }
 
     private fun setupRecyclerView() {
@@ -61,8 +60,8 @@ class HomeActivity : AppCompatActivity() {
         if (!docsDir.exists()) {
             docsDir.mkdirs()
         }
-        val docFiles = docsDir.listFiles { file -> file.extension == "html" || file.extension == "docx" }?.toList() ?: emptyList()
-        val documents = docFiles.map { 
+        val docFiles = docsDir.listFiles { file -> file.extension == "html" }?.toList() ?: emptyList()
+        val documents = docFiles.map {
             Document(it.nameWithoutExtension, it.absolutePath, it.lastModified())
         }.sortedByDescending { it.lastModified }
         docAdapter.submitList(documents)

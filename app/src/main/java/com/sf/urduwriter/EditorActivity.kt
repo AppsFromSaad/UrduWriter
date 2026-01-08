@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.print.PrintAttributes
 import android.print.PrintDocumentAdapter
 import android.print.PrintManager
+import android.text.InputType
 import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -22,9 +23,7 @@ import com.sf.urduwriter.databinding.ActivityEditorBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.apache.poi.xwpf.usermodel.XWPFDocument
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileOutputStream
 
 class EditorActivity : AppCompatActivity() {
@@ -48,7 +47,6 @@ class EditorActivity : AppCompatActivity() {
         setupToolbar()
         setupFileMenu()
         setupFontSpinner()
-        setupFontSizeSpinner()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -70,6 +68,8 @@ class EditorActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 injectAllFontsCSS()
+                // Set the default font size in the editor's javascript
+                mEditor.evaluateJavascript("javascript:setDefaultFontSize('22px');", null)
                 loadDocument()
             }
         }
@@ -78,9 +78,9 @@ class EditorActivity : AppCompatActivity() {
     }
 
     private fun setupToolbar() {
-        binding.boldButton.setOnClickListener { execJs("applyBold") }
-        binding.italicButton.setOnClickListener { execJs("applyItalic") }
-        binding.underlineButton.setOnClickListener { execJs("applyUnderline") }
+        binding.boldButton.setOnClickListener { execJs("execCmd", "bold") }
+        binding.italicButton.setOnClickListener { execJs("execCmd", "italic") }
+        binding.underlineButton.setOnClickListener { execJs("execCmd", "underline") }
         binding.undoButton.setOnClickListener { execJs("execCmd", "undo") }
         binding.redoButton.setOnClickListener { execJs("execCmd", "redo") }
 
@@ -97,6 +97,7 @@ class EditorActivity : AppCompatActivity() {
 
         binding.symbolsButton.setOnClickListener { showSymbolsDialog() }
         binding.colorPickerButton.setOnClickListener { showColorPickerDialog() }
+        binding.fontSizeButton.setOnClickListener { showFontSizeDialog() }
     }
 
     private fun setupFileMenu() {
@@ -104,6 +105,7 @@ class EditorActivity : AppCompatActivity() {
             val options = arrayOf(
                 getString(R.string.new_document),
                 getString(R.string.save),
+                "Save As", // New Option
                 getString(R.string.save_as_pdf)
             )
 
@@ -111,9 +113,13 @@ class EditorActivity : AppCompatActivity() {
                 .setTitle("فائل")
                 .setItems(options) { _, which ->
                     when (which) {
-                        0 -> execJs("clearAll")
-                        1 -> saveDocument()
-                        2 -> saveAsPdf()
+                        0 -> {
+                            currentDocPath = null // Reset path for new document
+                            execJs("clearAll")
+                        }
+                        1 -> saveDocument(false)
+                        2 -> saveDocument(true) // Force new name
+                        3 -> saveAsPdf()
                     }
                 }
                 .show()
@@ -145,21 +151,6 @@ class EditorActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupFontSizeSpinner() {
-        val fontSizes = (12..78).toList()
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, fontSizes)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.fontSizeSpinner.adapter = adapter
-
-        binding.fontSizeSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>, view: View?, position: Int, id: Long) {
-                val size = parent.getItemAtPosition(position) as Int
-                applyFontSize(size)
-            }
-            override fun onNothingSelected(parent: AdapterView<*>) {}
-        }
-    }
-
     // --- Document Handling ---
 
     private fun loadDocument() {
@@ -168,15 +159,11 @@ class EditorActivity : AppCompatActivity() {
         if (path != null) {
             val file = File(path)
             if (file.exists()) {
-                if (file.extension.equals("docx", ignoreCase = true)) {
-                    loadDocx(file)
-                } else {
-                    lifecycleScope.launch(Dispatchers.IO) {
-                        val content = file.readText()
-                        withContext(Dispatchers.Main) {
-                            val escapedContent = content.replace("'", "\'").replace("\"", "\\\"").replace("\n", "<br>")
-                            execJs("setDocumentHtml", escapedContent)
-                        }
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val content = file.readText()
+                    withContext(Dispatchers.Main) {
+                        val escapedContent = content.replace("'", "\'").replace("\"", "\\\"").replace("\n", "<br>")
+                        execJs("setDocumentHtml", escapedContent)
                     }
                 }
             }
@@ -185,75 +172,62 @@ class EditorActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadDocx(file: File) {
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                FileInputStream(file).use { fis ->
-                    val document = XWPFDocument(fis)
-                    val text = document.paragraphs.joinToString("<br>") { it.text }
-                    withContext(Dispatchers.Main) {
-                        val escapedContent = text.replace("'", "\'").replace("\"", "\\\"")
-                        execJs("setDocumentHtml", escapedContent)
-                    }
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@EditorActivity, "DOCX فائل نہیں کھل سکی: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
-
-    private fun saveDocument() {
+    private fun saveDocument(forceNewName: Boolean) {
         mEditor.evaluateJavascript("javascript:getDocumentHtml();") { html ->
             val unescapedHtml = html.substring(1, html.length - 1) // Remove surrounding quotes
                 .replace("\\\"", "\"")
                 .replace("\'", "'")
-            saveAsDocx(unescapedHtml)
+
+            if (currentDocPath != null && !forceNewName) {
+                // Save to existing file
+                saveHtmlToFile(unescapedHtml, currentDocPath!!)
+            } else {
+                // Ask for a new name
+                askForFileNameAndSave(unescapedHtml)
+            }
         }
     }
 
-    private fun saveAsDocx(htmlContent: String) {
-        val text = android.text.Html.fromHtml(htmlContent, android.text.Html.FROM_HTML_MODE_LEGACY).toString()
-
+    private fun askForFileNameAndSave(htmlContent: String) {
         val input = EditText(this@EditorActivity)
         val suggestedName = currentDocPath?.let { File(it).nameWithoutExtension } ?: ""
         input.setText(suggestedName)
+
         AlertDialog.Builder(this@EditorActivity)
-            .setTitle("DOCX فائل کا نام دیں")
+            .setTitle("فائل کا نام دیں")
             .setView(input)
             .setPositiveButton("محفوظ کریں") { _, _ ->
                 val fileName = input.text.toString()
                 if (fileName.isNotEmpty()) {
-                    lifecycleScope.launch(Dispatchers.IO) {
-                        val document = XWPFDocument()
-                        val paragraph = document.createParagraph()
-                        val run = paragraph.createRun()
-                        run.setText(text)
-
-                        val docsDir = File(filesDir, "docs")
-                        if (!docsDir.exists()) docsDir.mkdirs()
-                        val file = File(docsDir, "$fileName.docx")
-                        try {
-                            FileOutputStream(file).use { out ->
-                                document.write(out)
-                            }
-                            withContext(Dispatchers.Main) {
-                                Toast.makeText(this@EditorActivity, "DOCX فائل محفوظ ہوگئی", Toast.LENGTH_SHORT).show()
-                                currentDocPath = file.absolutePath
-                            }
-                        } catch (e: Exception) {
-                            withContext(Dispatchers.Main) {
-                                Toast.makeText(this@EditorActivity, "فائل محفوظ نہیں ہوسکی: ${e.message}", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    }
+                    val docsDir = File(filesDir, "docs")
+                    if (!docsDir.exists()) docsDir.mkdirs()
+                    val file = File(docsDir, "$fileName.html")
+                    saveHtmlToFile(htmlContent, file.absolutePath)
                 } else {
                     Toast.makeText(this@EditorActivity, "فائل کا نام خالی نہیں ہوسکتا", Toast.LENGTH_SHORT).show()
                 }
             }
             .setNegativeButton("منسوخ کریں", null)
             .show()
+    }
+
+    private fun saveHtmlToFile(htmlContent: String, path: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val file = File(path)
+                FileOutputStream(file).use { out ->
+                    out.write(htmlContent.toByteArray())
+                }
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@EditorActivity, "فائل محفوظ ہوگئی", Toast.LENGTH_SHORT).show()
+                    currentDocPath = file.absolutePath // Update current path
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@EditorActivity, "فائل محفوظ نہیں ہوسکی: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
 
     private fun saveAsPdf() {
@@ -280,15 +254,6 @@ class EditorActivity : AppCompatActivity() {
                     val position = adapter.getPosition(primaryFont)
                     if (position >= 0 && binding.fontSpinner.selectedItemPosition != position) {
                         binding.fontSpinner.setSelection(position)
-                    }
-                }
-
-                sizeValue?.let { size ->
-                    (binding.fontSizeSpinner.adapter as? ArrayAdapter<Int>)?.let { adapter ->
-                        val position = adapter.getPosition(size)
-                        if (position >= 0 && binding.fontSizeSpinner.selectedItemPosition != position) {
-                            binding.fontSizeSpinner.setSelection(position)
-                        }
                     }
                 }
             }
@@ -366,6 +331,26 @@ class EditorActivity : AppCompatActivity() {
     }
 
     // --- Dialogs ---
+
+    private fun showFontSizeDialog() {
+        val input = EditText(this)
+        input.inputType = InputType.TYPE_CLASS_NUMBER
+
+        AlertDialog.Builder(this)
+            .setTitle("فونٹ سائز منتخب کریں")
+            .setMessage("سائز 8 اور 150 کے درمیان درج کریں۔")
+            .setView(input)
+            .setPositiveButton("ٹھیک ہے") { _, _ ->
+                val size = input.text.toString().toIntOrNull()
+                if (size != null && size in 8..150) {
+                    applyFontSize(size)
+                } else {
+                    Toast.makeText(this, "براہ کرم 8 اور 150 کے درمیان ایک نمبر درج کریں۔", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("منسوخ کریں", null)
+            .show()
+    }
 
     private fun showColorPickerDialog() {
         ColorPickerDialog
