@@ -31,8 +31,8 @@ android {
         applicationId = "com.sf.urduwriter"
         minSdk = 27
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 5
+        versionName = "1.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -41,6 +41,13 @@ android {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("release")
+        }
+    }
+
+    applicationVariants.all { 
+        val variant = this
+        variant.outputs.all { 
+            (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName = "UrduWriter-${variant.versionName}-${variant.buildType.name}.apk"
         }
     }
 
