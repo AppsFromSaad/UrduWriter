@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#EEEEEE"
+    tools:context=".EditorActivity">
+
+    <!-- TOP FILE BAR -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="#6A0DAD"
+        android:padding="8dp"
+        android:layoutDirection="rtl">
+
+        <Button
+            android:id="@+id/fileButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="فائل"
+            android:textColor="#FFFFFF"
+            android:background="@android:color/transparent" />
+
+        <Space
+            android:layout_width="20dp"
+            android:layout_height="wrap_content" />
+
+        <Button
+            android:id="@+id/undoButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="UNDO"
+            android:textColor="#FFFFFF"
+            android:background="@android:color/transparent" />
+
+        <Button
+            android:id="@+id/redoButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="REDO"
+            android:textColor="#FFFFFF"
+            android:background="@android:color/transparent" />
+    </LinearLayout>
+
+    <!-- TOOLBAR -->
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="55dp"
+        android:background="#D2B4F0"
+        android:layoutDirection="rtl">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:padding="6dp"
+            android:gravity="center_vertical">
+
+            <!-- Font Spinner -->
+            <Spinner
+                android:id="@+id/fontSpinner"
+                android:layout_width="150dp"
+                android:layout_height="wrap_content"
+                android:prompt="@string/select_font" />
+
+            <!-- Font Size Spinner -->
+            <Spinner
+                android:id="@+id/fontSizeSpinner"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+
+            <!-- Color Picker Button -->
+            <Button
+                android:id="@+id/colorPickerButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="رنگ"/>
+
+            <!-- Bold -->
+            <Button
+                android:id="@+id/boldButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="B"/>
+
+            <!-- Italic -->
+            <Button
+                android:id="@+id/italicButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="I"/>
+
+            <!-- Underline -->
+            <Button
+                android:id="@+id/underlineButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="U"/>
+
+            <!-- Align Left -->
+            <Button
+                android:id="@+id/alignLeftButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Left"/>
+
+            <!-- Align Center -->
+            <Button
+                android:id="@+id/alignCenterButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Center"/>
+
+            <!-- Align Right -->
+            <Button
+                android:id="@+id/alignRightButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Right"/>
+
+            <!-- Bullets -->
+            <Button
+                android:id="@+id/bulletsButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="بلٹس"/>
+
+            <!-- Numbers -->
+            <Button
+                android:id="@+id/numbersButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1. List"/>
+
+            <!-- Symbols -->
+            <Button
+                android:id="@+id/symbolsButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="علامات"/>
+
+        </LinearLayout>
+    </HorizontalScrollView>
+
+
+    <!-- EDITOR AREA -->
+    <WebView
+        android:id="@+id/editor"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@android:color/transparent" />
+
+</LinearLayout>

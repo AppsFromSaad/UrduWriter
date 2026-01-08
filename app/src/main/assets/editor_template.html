@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="ur">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>UrduWrier — Print Layout Editor</title>
+<style>
+  :root{
+    --page-width:8.27in;
+    --page-height:11.69in;
+    --page-padding:1in;
+    --bg:#eceff1;
+    --page-bg:#ffffff;
+    --shadow: 0 6px 22px rgba(0,0,0,0.16);
+    --nasta-line: 2.0;
+  }
+  html,body{height:100%;margin:0;background:var(--bg);font-family: 'Jameel Noori Nastaleeq', system-ui, sans-serif; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;}
+  .wrap{min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:20px 24px;}
+  .pageA4{
+    width:var(--page-width);
+    min-height:var(--page-height);
+    background:var(--page-bg);
+    padding:var(--page-padding);
+    box-sizing:border-box;
+    box-shadow:var(--shadow);
+    margin-bottom:28px;
+    position:relative;
+    border-radius:6px;
+    overflow:auto;
+  }
+  #content{min-height: calc(var(--page-height) - 2*var(--page-padding)); outline:none; line-height:var(--nasta-line); font-size:78px; text-align:right;}
+  table{width:100%; border-collapse:collapse; margin:8px 0}
+  td,th{border:1px solid #000; padding:8px; vertical-align:top}
+  img{max-width:100%; height:auto; display:block; margin:8px 0}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="pageA4" id="page0">
+      <div id="content" contenteditable="true" spellcheck="false" dir="rtl"></div>
+    </div>
+  </div>
+
+<script>
+function getDocumentHtml(){
+  return document.getElementById('content').innerHTML;
+}
+function setDocumentHtml(html){
+  document.getElementById('content').innerHTML = html;
+}
+function addFonts(fonts) {
+  const style = document.createElement('style');
+  document.head.appendChild(style);
+  let styleSheetContent = '';
+  if(fonts && Array.isArray(fonts)){
+    fonts.forEach(font => {
+      styleSheetContent += `@font-face { font-family: "${font.name}"; src: url('${font.url}'); }`;
+    });
+  }
+  style.innerHTML = styleSheetContent;
+}
+
+// --- Robust Styling Functions ---
+function applyWrapperStyle(styleApplier) {
+    const selection = window.getSelection();
+    if (!selection.rangeCount || selection.isCollapsed) return;
+
+    const range = selection.getRangeAt(0);
+    const selectedContents = range.extractContents();
+    const wrapper = document.createElement('span');
+    
+    styleApplier(wrapper);
+
+    wrapper.appendChild(selectedContents);
+    range.insertNode(wrapper);
+
+    // Restore selection around the new wrapper
+    selection.removeAllRanges();
+    const newRange = document.createRange();
+    newRange.selectNode(wrapper);
+    selection.addRange(newRange);
+}
+
+function applyFont(fontName) {
+  applyWrapperStyle(span => { span.style.fontFamily = fontName; });
+}
+function applyFontSize(size) {
+  applyWrapperStyle(span => { span.style.fontSize = size + 'px'; });
+}
+function applyFontColor(color) {
+  applyWrapperStyle(span => { span.style.color = color; });
+}
+
+// --- Other Editor Commands ---
+document.addEventListener('click', function(e){ if(e.target && e.target.tagName==='A') e.preventDefault(); });
+
+// --- Current Style Detection ---
+function getCurrentStyle() {
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return;
+
+    let element = selection.anchorNode;
+    // If the selection is on a text node, get its parent element
+    if (element.nodeType === Node.TEXT_NODE) {
+        element = element.parentNode;
+    }
+
+    if (element && element.nodeType === Node.ELEMENT_NODE) {
+        const style = window.getComputedStyle(element);
+        const fontName = style.fontFamily;
+        const fontSize = style.fontSize;
+
+        // Call back to Android to update the UI
+        if (window.Android && typeof window.Android.updateCurrentStyle === 'function') {
+            // Passing the raw font family string (which might include quotes and fallbacks)
+            // and the font size (which will be in 'px')
+            window.Android.updateCurrentStyle(fontName, fontSize);
+        }
+    }
+}
+
+// Add event listeners to the content area
+const contentArea = document.getElementById('content');
+contentArea.addEventListener('click', getCurrentStyle);
+contentArea.addEventListener('keyup', getCurrentStyle); // for when user types or moves cursor with keyboard
+contentArea.addEventListener('mouseup', getCurrentStyle); // for when selection is changed with mouse
+
+</script>
+</body>
+</html>

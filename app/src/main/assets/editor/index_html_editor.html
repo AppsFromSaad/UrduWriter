@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ur">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UrduWrier Editor</title>
+    <style>
+        /* Basic setup */
+        html, body {
+            margin: 0;
+            padding: 0;
+            direction: rtl;
+            font-family: "Jameel Noori Nastaleeq", "Sakkal Majalla", "Adobe Arabic", serif;
+            -webkit-font-smoothing: antialiased;
+            background: #E0E0E0;
+        }
+
+        #editor {
+            width: 8.27in;
+            min-height: 11.69in; /* A4 height */
+            margin: 20px auto;
+            padding: 1in;
+            background: white;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            box-sizing: border-box;
+            font-size: 22px;
+            line-height: 2.0;
+            outline: none;
+            overflow-wrap: break-word;
+        }
+
+        u { text-underline-offset: 4px; }
+
+        @media print {
+            @page { size: A4; margin: 1in; }
+            html, body { background: white !important; margin: 0; padding: 0; border: 0; }
+            #editor { width: 100%; min-height: 0; box-shadow: none; padding: 0; caret-color: transparent; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="editor" contenteditable="true"></div>
+
+<script>
+    const editor = document.getElementById('editor');
+
+    // Enable CSS mode for commands
+    document.execCommand('styleWithCSS', false, true);
+
+    function execCmd(command, value) {
+        editor.focus();
+        document.execCommand(command, false, value || null);
+    }
+
+    function getDocumentHtml() { return editor.innerHTML; }
+    function setDocumentHtml(html) { editor.innerHTML = html || ''; }
+    function clearAll() { setDocumentHtml(''); }
+
+    // --- Font Size Solution ---
+    function applyFontSize(size) {
+        // Toggle styleWithCSS off temporarily to use <font> tags as reliable markers
+        document.execCommand('styleWithCSS', false, false);
+        document.execCommand('fontSize', false, '7');
+        
+        // Find the marked tags and apply exact pixel size
+        const fontElements = editor.querySelectorAll("font[size='7']");
+        fontElements.forEach(el => {
+            el.removeAttribute("size");
+            el.style.fontSize = size + "px";
+            
+            // Convert to span for cleaner HTML
+            const span = document.createElement('span');
+            span.style.fontSize = size + "px";
+            if (el.style.fontFamily) span.style.fontFamily = el.style.fontFamily;
+            if (el.style.color) span.style.color = el.style.color;
+            
+            while (el.firstChild) span.appendChild(el.firstChild);
+            el.parentNode.replaceChild(span, el);
+        });
+        
+        // Switch back to CSS mode
+        document.execCommand('styleWithCSS', false, true);
+    }
+
+    function applyFont(fontName) {
+        execCmd('fontName', fontName);
+    }
+
+    function applyFontColor(color) {
+        execCmd('foreColor', color);
+    }
+
+    function insertSymbol(symbol, fontName) {
+        const html = fontName && fontName !== 'Default'
+            ? `<span style="font-family:'${fontName}'">${symbol}</span>`
+            : symbol;
+        execCmd('insertHTML', html);
+    }
+
+    // --- Current Style Detection ---
+    function getCurrentStyle() {
+        const selection = window.getSelection();
+        if (!selection.rangeCount) return;
+
+        let element = selection.anchorNode;
+        if (element && element.nodeType === Node.TEXT_NODE) {
+            element = element.parentNode;
+        }
+
+        if (element && element.nodeType === Node.ELEMENT_NODE && editor.contains(element)) {
+            const style = window.getComputedStyle(element);
+            const fontName = style.fontFamily.replace(/['"]/g, '').split(',')[0];
+            const fontSize = parseInt(style.fontSize);
+
+            if (window.Android && typeof window.Android.updateCurrentStyle === 'function') {
+                window.Android.updateCurrentStyle(fontName, fontSize.toString());
+            }
+        }
+    }
+	
+    editor.addEventListener('click', getCurrentStyle);
+    editor.addEventListener('keyup', getCurrentStyle);
+    editor.addEventListener('mouseup', getCurrentStyle);
+
+    window.onload = () => { 
+        editor.focus();
+        getCurrentStyle();
+    };
+</script>
+</body>
+</html>
