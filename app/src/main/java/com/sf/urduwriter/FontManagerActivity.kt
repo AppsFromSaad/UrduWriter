@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -21,8 +22,21 @@ class FontManagerActivity : AppCompatActivity() {
     private lateinit var binding: ActivityFontManagerBinding
     private lateinit var fontAdapter: FontAdapter
 
-    companion object {
-        private const val PICK_FONTS_REQUEST = 1
+    private val pickFontsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.let {
+                if (it.clipData != null) {
+                    for (i in 0 until it.clipData!!.itemCount) {
+                        val uri = it.clipData!!.getItemAt(i).uri
+                        saveFontFromUri(uri)
+                    }
+                } else if (it.data != null) {
+                    val uri = it.data!!
+                    saveFontFromUri(uri)
+                }
+                loadFonts()
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -63,25 +77,7 @@ class FontManagerActivity : AppCompatActivity() {
         val mimeTypes = arrayOf("font/ttf", "font/otf", "application/font-sfnt")
         intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes)
         intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-        startActivityForResult(intent, PICK_FONTS_REQUEST)
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == PICK_FONTS_REQUEST && resultCode == Activity.RESULT_OK) {
-            data?.let { 
-                if (it.clipData != null) {
-                    for (i in 0 until it.clipData!!.itemCount) {
-                        val uri = it.clipData!!.getItemAt(i).uri
-                        saveFontFromUri(uri)
-                    }
-                } else if (it.data != null) {
-                    val uri = it.data!!
-                    saveFontFromUri(uri)
-                }
-                loadFonts()
-            }
-        }
+        pickFontsLauncher.launch(intent)
     }
 
     private fun saveFontFromUri(uri: Uri) {
@@ -95,10 +91,10 @@ class FontManagerActivity : AppCompatActivity() {
                 inputStream.close()
                 outputStream.close()
             } else {
-                 Toast.makeText(this, "فونٹ کی معلومات حاصل کرنے میں ناکامی", Toast.LENGTH_SHORT).show()
+                 Toast.makeText(this, getString(R.string.failed_to_get_font_info), Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "فونٹ محفوظ کرنے میں ناکامی: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, getString(R.string.failed_to_save_font, e.message), Toast.LENGTH_LONG).show()
         }
     }
 
@@ -134,10 +130,10 @@ class FontManagerActivity : AppCompatActivity() {
             val deleted = FontManager.deleteFont(this@FontManagerActivity, fontName)
             withContext(Dispatchers.Main) {
                 if (deleted) {
-                    Toast.makeText(this@FontManagerActivity, "'$fontName' حذف ہوگیا", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@FontManagerActivity, getString(R.string.font_deleted, fontName), Toast.LENGTH_SHORT).show()
                     loadFonts()
                 } else {
-                    Toast.makeText(this@FontManagerActivity, "'$fontName' حذف نہیں ہوسکا", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@FontManagerActivity, getString(R.string.failed_to_delete_font, fontName), Toast.LENGTH_SHORT).show()
                 }
             }
         }

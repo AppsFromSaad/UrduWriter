@@ -4,8 +4,6 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
-import android.view.View
-import android.widget.PopupMenu
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.sf.urduwriter.databinding.ActivityHomeBinding
@@ -66,7 +64,7 @@ class HomeActivity : AppCompatActivity() {
         val docFiles = docsDir.listFiles { file -> file.extension == "html" || file.extension == "docx" }?.toList() ?: emptyList()
         val documents = docFiles.map { 
             Document(it.nameWithoutExtension, it.absolutePath, it.lastModified())
-        }
+        }.sortedByDescending { it.lastModified }
         docAdapter.submitList(documents)
     }
 

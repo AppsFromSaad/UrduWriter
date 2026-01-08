@@ -1,4 +1,11 @@
 <resources>
     <string name="app_name">Urdu Writer</string>
     <string name="select_font">فونٹ منتخب کریں</string>
+    <string name="new_document">نیا ڈاکومنٹ</string>
+    <string name="save">محفوظ کریں</string>
+    <string name="save_as_pdf">پی ڈی ایف میں محفوظ کریں</string>
+    <string name="failed_to_get_font_info">فونٹ کی معلومات حاصل کرنے میں ناکامی</string>
+    <string name="failed_to_save_font">فونٹ محفوظ کرنے میں ناکامی: %s</string>
+    <string name="font_deleted">\'%s\' حذف ہوگیا</string>
+    <string name="failed_to_delete_font">\'%s\' حذف نہیں ہوسکا</string>
 </resources>

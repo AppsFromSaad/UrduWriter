@@ -102,9 +102,9 @@ class EditorActivity : AppCompatActivity() {
     private fun setupFileMenu() {
         binding.fileButton.setOnClickListener {
             val options = arrayOf(
-                "نیا ڈاکومنٹ",
-                "محفوظ کریں",
-                "پی ڈی ایف میں محفوظ کریں"
+                getString(R.string.new_document),
+                getString(R.string.save),
+                getString(R.string.save_as_pdf)
             )
 
             AlertDialog.Builder(this)

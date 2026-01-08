@@ -5,6 +5,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import java.text.SimpleDateFormat
 import java.util.*
@@ -12,9 +14,7 @@ import java.util.*
 class DocumentAdapter(
     private val onDocumentClick: (Document) -> Unit,
     private val onDeleteClick: (Document) -> Unit
-) : RecyclerView.Adapter<DocumentAdapter.DocumentViewHolder>() {
-
-    private val documents = mutableListOf<Document>()
+) : ListAdapter<Document, DocumentAdapter.DocumentViewHolder>(DocumentDiffCallback()) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): DocumentViewHolder {
         val view = LayoutInflater.from(parent.context).inflate(R.layout.item_document, parent, false)
@@ -22,16 +22,8 @@ class DocumentAdapter(
     }
 
     override fun onBindViewHolder(holder: DocumentViewHolder, position: Int) {
-        val document = documents[position]
+        val document = getItem(position)
         holder.bind(document)
-    }
-
-    override fun getItemCount() = documents.size
-
-    fun submitList(newDocuments: List<Document>) {
-        documents.clear()
-        documents.addAll(newDocuments.sortedByDescending { it.lastModified })
-        notifyDataSetChanged()
     }
 
     inner class DocumentViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -45,5 +37,15 @@ class DocumentAdapter(
             itemView.setOnClickListener { onDocumentClick(document) }
             deleteButton.setOnClickListener { onDeleteClick(document) }
         }
+    }
+}
+
+class DocumentDiffCallback : DiffUtil.ItemCallback<Document>() {
+    override fun areItemsTheSame(oldItem: Document, newItem: Document): Boolean {
+        return oldItem.path == newItem.path
+    }
+
+    override fun areContentsTheSame(oldItem: Document, newItem: Document): Boolean {
+        return oldItem == newItem
     }
 }

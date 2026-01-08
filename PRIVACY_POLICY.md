@@ -1,6 +1,6 @@
 # Privacy Policy for Urdu Writer
 
-**Last updated:** [30/01/2026]
+**Last updated:** [Date]
 
 Thank you for using Urdu Writer ("we," "us," or "our"). This Privacy Policy is to inform you about our policies regarding the collection, use, and disclosure of personal data when you use our mobile application (the "Service").
 
@@ -27,4 +27,3 @@ Changes to this Privacy Policy are effective when they are posted on this page.
 ## Contact Us
 
 If you have any questions about this Privacy Policy, please contact us via our GitHub repository issues.
-
