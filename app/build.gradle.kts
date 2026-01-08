@@ -10,9 +10,9 @@ android {
     defaultConfig {
         applicationId = "com.sf.urduwriter"
         minSdk = 27
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
