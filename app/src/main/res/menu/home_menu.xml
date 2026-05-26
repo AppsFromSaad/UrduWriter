@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
-
     <item
-        android:id="@+id/action_font_manager"
-        android:title="Font Manager"
-        app:showAsAction="ifRoom" />
-
+        android:id="@+id/action_backup"
+        android:title="بیک اپ بنائیں (Backup)"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_restore"
+        android:title="بیک اپ بحال کریں (Restore)"
+        app:showAsAction="never" />
 </menu>

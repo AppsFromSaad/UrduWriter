@@ -1,141 +1,353 @@
 <!DOCTYPE html>
 <html lang="ur">
+
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UrduWrier Editor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>UrduWriter Editor</title>
     <style>
-        /* Basic setup */
-        html, body {
+        /* Modern Workspace Setup - Screen & Print Synchronization */
+        :root {
+            --a4-width: 210mm;
+            --a4-min-height: 297mm;
+            --page-margin: 0.75in;
+        }
+
+        html,
+        body {
             margin: 0;
             padding: 0;
             direction: rtl;
-            font-family: "Jameel Noori Nastaleeq", "Sakkal Majalla", "Adobe Arabic", serif;
+            font-family: "Jameel_noori_nastaleeq", "Jameel Noori Nastaleeq", "Sakkal Majalla", "Adobe Arabic", serif;
             -webkit-font-smoothing: antialiased;
-            background: #E0E0E0;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+            background: #E9EEF2;
+            min-height: 100vh;
+        }
+
+        /* Center page on screen using robust block centering */
+        body {
+            display: block;
+            text-align: center;
+            min-width: fit-content;
+        }
+
+        #page-container {
+            padding: 40px 20px;
+            display: inline-block;
+            text-align: right;
         }
 
         #editor {
-            width: 8.27in;
-            min-height: 11.69in; /* A4 height */
-            margin: 20px auto;
-            padding: 1in;
+            width: var(--a4-width);
+            min-height: var(--a4-min-height);
+
+            /* The margin MUST be inside the 210mm box as padding to match print perfectly */
+            padding: var(--page-margin);
             background: white;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
             box-sizing: border-box;
-            font-size: 22px !important; /* Force the default font size */
-            line-height: 2.0;
+            box-shadow: 0 4px 25px rgba(0, 0, 0, 0.15);
+            border-radius: 2px;
+
+            font-family: inherit;
+            font-size: 22px !important;
+            line-height: 1.8;
+            word-spacing: -0.05em; /* Slightly tighter spacing for Urdu Nastaliq aesthetics */
             outline: none;
             overflow-wrap: break-word;
+            word-wrap: break-word;
+            text-align: right;
+            text-justify: inter-word;
+
+            /* Force exact rendering */
+            white-space: pre-wrap;
+            word-break: normal;
         }
 
-        u { text-underline-offset: 4px; }
+        u {
+            text-underline-offset: 4px;
+        }
 
-        /* Make bullet size consistent with line height */
         li {
             font-size: inherit;
         }
 
         @media print {
-            @page { size: A4; margin: 1in; }
-            html, body { background: white !important; margin: 0; padding: 0; border: 0; }
-            #editor { width: 100%; min-height: 0; box-shadow: none; padding: 0; caret-color: transparent; }
+            @page {
+                size: A4 portrait;
+                margin: 0;
+            }
+
+            html,
+            body {
+                background: white !important;
+                width: 210mm !important;
+                height: 297mm !important;
+                display: block !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            #page-container {
+                padding: 0 !important;
+                margin: 0 !important;
+                display: block !important;
+                width: 210mm !important;
+            }
+
+            #editor {
+                width: 210mm !important;
+                min-height: 297mm !important;
+                padding: 0.75in !important; /* Exact same padding as screen */
+                margin: 0 !important;
+                box-shadow: none !important;
+                border: none !important;
+                background: white !important;
+
+                /* Hide cursor in PDF */
+                caret-color: transparent !important;
+                outline: none !important;
+
+                /* Pagination controls */
+                page-break-inside: auto;
+            }
+
+            /* Prevent splitting lines or paragraphs awkwardly */
+            #editor p,
+            #editor div,
+            #editor li,
+            #editor span {
+                page-break-inside: avoid;
+                break-inside: avoid;
+                orphans: 3;
+                widows: 3;
+            }
         }
     </style>
 </head>
+
 <body>
+    <div id="page-container">
+        <div id="editor" contenteditable="true"></div>
+    </div>
 
-<div id="editor" contenteditable="true"></div>
+    <script>
+        const editor = document.getElementById('editor');
 
-<script>
-    const editor = document.getElementById('editor');
-
-    // Enable CSS mode for commands
-    document.execCommand('styleWithCSS', false, true);
-
-    function setDefaultFontSize(size) {
-        editor.style.fontSize = size;
-    }
-
-    function execCmd(command, value) {
-        editor.focus();
-        document.execCommand(command, false, value || null);
-    }
-
-    function getDocumentHtml() { return editor.innerHTML; }
-    function setDocumentHtml(html) { editor.innerHTML = html || ''; }
-    function clearAll() { setDocumentHtml(''); }
-
-    // --- Font Size Solution ---
-    function applyFontSize(size) {
-        // Toggle styleWithCSS off temporarily to use <font> tags as reliable markers
-        document.execCommand('styleWithCSS', false, false);
-        document.execCommand('fontSize', false, '7');
-        
-        // Find the marked tags and apply exact pixel size
-        const fontElements = editor.querySelectorAll("font[size='7']");
-        fontElements.forEach(el => {
-            el.removeAttribute("size");
-            el.style.fontSize = size + "px";
-            
-            // Convert to span for cleaner HTML
-            const span = document.createElement('span');
-            span.style.fontSize = size + "px";
-            if (el.style.fontFamily) span.style.fontFamily = el.style.fontFamily;
-            if (el.style.color) span.style.color = el.style.color;
-            
-            while (el.firstChild) span.appendChild(el.firstChild);
-            el.parentNode.replaceChild(span, el);
-        });
-        
-        // Switch back to CSS mode
+        // Enable CSS mode for commands
         document.execCommand('styleWithCSS', false, true);
-    }
 
-    function applyFont(fontName) {
-        execCmd('fontName', fontName);
-    }
-
-    function applyFontColor(color) {
-        execCmd('foreColor', color);
-    }
-
-    function insertSymbol(symbol, fontName) {
-        const html = fontName && fontName !== 'Default'
-            ? `<span style="font-family:'${fontName}'">${symbol}</span>`
-            : symbol;
-        execCmd('insertHTML', html);
-    }
-
-    // --- Current Style Detection ---
-    function getCurrentStyle() {
-        const selection = window.getSelection();
-        if (!selection.rangeCount) return;
-
-        let element = selection.anchorNode;
-        if (element && element.nodeType === Node.TEXT_NODE) {
-            element = element.parentNode;
+        function setDefaultFontSize(size) {
+            editor.style.fontSize = size;
         }
 
-        if (element && element.nodeType === Node.ELEMENT_NODE && editor.contains(element)) {
-            const style = window.getComputedStyle(element);
-            const fontName = style.fontFamily.replace(/['"]/g, '').split(',')[0];
-            const fontSize = parseInt(style.fontSize);
+        function execCmd(command, value) {
+            editor.focus();
+            document.execCommand(command, false, value || null);
+        }
 
-            if (window.Android && typeof window.Android.updateCurrentStyle === 'function') {
-                window.Android.updateCurrentStyle(fontName, fontSize.toString());
+        function getDocumentHtml() { return editor.innerHTML; }
+        function setDocumentHtml(html) { editor.innerHTML = html || ''; }
+        function setDocumentHtmlBase64(base64Str) {
+            if (!base64Str) {
+                editor.innerHTML = '';
+                return;
+            }
+            try {
+                const binary = atob(base64Str);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) {
+                    bytes[i] = binary.charCodeAt(i);
+                }
+                const decoder = new TextDecoder('utf-8');
+                editor.innerHTML = decoder.decode(bytes);
+            } catch (e) {
+                try {
+                    editor.innerHTML = decodeURIComponent(escape(atob(base64Str)));
+                } catch (err) {
+                    editor.innerHTML = atob(base64Str);
+                }
             }
         }
-    }
-	
-    editor.addEventListener('click', getCurrentStyle);
-    editor.addEventListener('keyup', getCurrentStyle);
-    editor.addEventListener('mouseup', getCurrentStyle);
+        function clearAll() { setDocumentHtml(''); }
 
-    window.onload = () => { 
-        editor.focus();
-        getCurrentStyle();
-    };
-</script>
+        function setListBullet(bulletChar) {
+            editor.focus();
+            const selection = window.getSelection();
+            if (!selection.rangeCount) return;
+
+            let node = selection.anchorNode;
+            let li = null;
+            let ul = null;
+
+            while (node && node !== editor) {
+                if (node.nodeName === 'LI') li = node;
+                if (node.nodeName === 'UL') {
+                    ul = node;
+                    break;
+                }
+                node = node.parentNode;
+            }
+
+            if (li || ul) {
+                const target = li || ul;
+                const standardTypes = {
+                    '•': 'disc',
+                    '◦': 'circle',
+                    '▪': 'square'
+                };
+                if (standardTypes[bulletChar]) {
+                    target.style.listStyleType = standardTypes[bulletChar];
+                } else {
+                    target.style.listStyleType = `"${bulletChar} "`;
+                }
+            } else {
+                // Not in a list, create one and then apply the bullet
+                document.execCommand('insertUnorderedList');
+                setTimeout(() => setListBullet(bulletChar), 100);
+            }
+        }
+
+        // --- Font Size Solution ---
+        function applyFontSize(size) {
+            const selection = window.getSelection();
+            if (!selection.rangeCount) return;
+
+            if (selection.isCollapsed) {
+                // No text selected, user wants to type in new size
+                const range = selection.getRangeAt(0);
+                const span = document.createElement('span');
+                span.style.fontSize = size + "px";
+                span.innerHTML = '&#8203;'; // Zero-width space
+
+                range.insertNode(span);
+                range.setStart(span.firstChild, 1);
+                range.collapse(true);
+                selection.removeAllRanges();
+                selection.addRange(range);
+                editor.focus();
+            } else {
+                // Toggle styleWithCSS off temporarily to use <font> tags as reliable markers
+                document.execCommand('styleWithCSS', false, false);
+                document.execCommand('fontSize', false, '7');
+
+                // Find the marked tags and apply exact pixel size
+                const fontElements = editor.querySelectorAll("font[size='7']");
+                fontElements.forEach(el => {
+                    el.removeAttribute("size");
+                    el.style.fontSize = size + "px";
+
+                    // Convert to span for cleaner HTML
+                    const span = document.createElement('span');
+                    span.style.fontSize = size + "px";
+                    if (el.style.fontFamily) span.style.fontFamily = el.style.fontFamily;
+                    if (el.style.color) span.style.color = el.style.color;
+                    if (el.face) span.style.fontFamily = el.face;
+                    if (el.color) span.style.color = el.color;
+
+                    while (el.firstChild) span.appendChild(el.firstChild);
+                    el.parentNode.replaceChild(span, el);
+                });
+
+                // Switch back to CSS mode
+                document.execCommand('styleWithCSS', false, true);
+            }
+        }
+
+        function applyFont(fontName) {
+            execCmd('fontName', fontName);
+        }
+
+        function applyFontColor(color) {
+            execCmd('foreColor', color);
+        }
+
+        function insertSymbol(symbol, fontName) {
+            const selection = window.getSelection();
+            if (!selection.rangeCount) return;
+            const range = selection.getRangeAt(0);
+
+            // Capture current style to restore it after the symbol
+            const currentStyle = getCurrentStyle();
+            const originalFont = currentStyle ? currentStyle.fontName : '';
+            const fontSize = currentStyle ? currentStyle.fontSize : editor.style.fontSize;
+
+            // 1. Create and insert the symbol span
+            const symbolSpan = document.createElement('span');
+            if (fontName && fontName !== 'Default') {
+                symbolSpan.style.fontFamily = `'${fontName.replace(/'/g, "\\'")}'`;
+            }
+            symbolSpan.style.fontSize = fontSize;
+            symbolSpan.innerText = symbol;
+
+            range.deleteContents();
+            range.insertNode(symbolSpan);
+
+            // 2. Move cursor after the symbol
+            range.setStartAfter(symbolSpan);
+            range.collapse(true);
+
+            // 3. Insert a "reset" span with original font and a zero-width space
+            // This prevents the symbol's font from "bleeding" into new text
+            const resetSpan = document.createElement('span');
+            if (originalFont) {
+                resetSpan.style.fontFamily = `'${originalFont.replace(/'/g, "\\'")}'`;
+            }
+            resetSpan.style.fontSize = fontSize;
+            resetSpan.innerHTML = '&#8203;'; // Zero-width space
+
+            range.insertNode(resetSpan);
+
+            // 4. Position the cursor exactly inside the reset span after the ZWSP
+            // so the user continues typing in the original style.
+            range.setStart(resetSpan.firstChild, 1);
+            range.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(range);
+
+            editor.focus();
+        }
+
+        // --- Current Style Detection ---
+        let lastReportedFont = '';
+        let lastReportedSize = '';
+
+        function getCurrentStyle() {
+            const selection = window.getSelection();
+            if (!selection.rangeCount) return null;
+
+            let element = selection.anchorNode;
+            if (element && element.nodeType === Node.TEXT_NODE) {
+                element = element.parentNode;
+            }
+
+            if (element && element.nodeType === Node.ELEMENT_NODE && editor.contains(element)) {
+                const style = window.getComputedStyle(element);
+                const fontName = style.fontFamily.replace(/['"]/g, '').split(',')[0];
+                const fontSize = style.fontSize;
+
+                if (window.Android && typeof window.Android.updateCurrentStyle === 'function') {
+                    if (fontName !== lastReportedFont || fontSize !== lastReportedSize) {
+                        window.Android.updateCurrentStyle(fontName, fontSize);
+                        lastReportedFont = fontName;
+                        lastReportedSize = fontSize;
+                    }
+                }
+                return { fontName, fontSize };
+            }
+            return null;
+        }
+
+        editor.addEventListener('click', getCurrentStyle);
+        editor.addEventListener('keyup', getCurrentStyle);
+        editor.addEventListener('mouseup', getCurrentStyle);
+
+        window.onload = () => {
+            editor.focus();
+            getCurrentStyle();
+        };
+    </script>
 </body>
+
 </html>

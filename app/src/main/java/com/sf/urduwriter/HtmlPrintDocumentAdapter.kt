@@ -1,4 +1,4 @@
-package com.sf.urduwrier
+package com.sf.urduwriter
 
 import android.content.Context
 import android.os.Bundle

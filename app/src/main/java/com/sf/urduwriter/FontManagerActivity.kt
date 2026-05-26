@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.widget.Toast
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -41,14 +42,51 @@ class FontManagerActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         binding = ActivityFontManagerBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        setSupportActionBar(binding.toolbar)
+        binding.toolbar.setNavigationOnClickListener {
+            onBackPressedDispatcher.onBackPressed()
+        }
+
+        // Set custom font for header
+        try {
+            val jameelNooriFont = android.graphics.Typeface.createFromAsset(assets, "fonts/Jameel_noori_nastaleeq.ttf")
+            // Apply font to toolbar title and header title
+            binding.toolbar.post {
+                for (i in 0 until binding.toolbar.childCount) {
+                    val view = binding.toolbar.getChildAt(i)
+                    if (view is android.widget.TextView) {
+                        view.typeface = jameelNooriFont
+                    }
+                }
+            }
+            // Apply font to all textviews in the appbar layout
+            (binding.toolbar.parent as? com.google.android.material.appbar.AppBarLayout)?.let { 
+                applyFontToViewGroup(it, jameelNooriFont) 
+            }
+        } catch (e: Exception) {
+            // Font not found
+        }
 
         setupRecyclerView()
         loadFonts()
 
         binding.fabAddFont.setOnClickListener {
             openFontPicker()
+        }
+    }
+
+    private fun applyFontToViewGroup(viewGroup: android.view.ViewGroup, typeface: android.graphics.Typeface) {
+        for (i in 0 until viewGroup.childCount) {
+            val child = viewGroup.getChildAt(i)
+            if (child is android.widget.TextView) {
+                child.typeface = typeface
+            } else if (child is android.view.ViewGroup) {
+                applyFontToViewGroup(child, typeface)
+            }
         }
     }
 

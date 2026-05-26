@@ -5,6 +5,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.sf.urduwriter.databinding.ItemFontBinding
+import java.io.File
 
 class FontAdapter(
     private val fonts: MutableList<FontItem>,
@@ -34,6 +35,23 @@ class FontAdapter(
 
         fun bind(font: FontItem) {
             binding.fontNameTextView.text = font.name
+            
+            // Apply font preview
+            try {
+                val typeface = if (font.name == "Default") {
+                    android.graphics.Typeface.DEFAULT
+                } else if (!font.isDeletable) {
+                    android.graphics.Typeface.createFromAsset(binding.root.context.assets, "fonts/${font.name}")
+                } else {
+                    val userFontsDir = File(binding.root.context.filesDir, "user_fonts")
+                    val fontFile = File(userFontsDir, font.name)
+                    android.graphics.Typeface.createFromFile(fontFile)
+                }
+                binding.fontPreviewTextView.typeface = typeface
+            } catch (e: Exception) {
+                // Font load failed
+            }
+
             if (font.isDeletable) {
                 binding.deleteButton.visibility = View.VISIBLE
                 binding.deleteButton.setOnClickListener { onDeleteClick(font.name) }

@@ -15,6 +15,8 @@ import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.github.dhaval2404.colorpicker.ColorPickerDialog
@@ -23,6 +25,7 @@ import com.sf.urduwriter.databinding.ActivityEditorBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONTokener
 import java.io.File
 import java.io.FileOutputStream
 
@@ -35,18 +38,47 @@ class EditorActivity : AppCompatActivity() {
     private lateinit var binding: ActivityEditorBinding
     private lateinit var mEditor: WebView
     private var currentDocPath: String? = null
+    private var allFonts = mutableListOf<String>()
+    private var loadedHtml: String = ""
+    private var isDiscardingChanges = false
 
     // --- Lifecycle and Setup ---
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         binding = ActivityEditorBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
         setupEditor()
         setupToolbar()
         setupFileMenu()
-        setupFontSpinner()
+        loadFontList()
+
+        // Apply Nastaliq font to title and layout
+        try {
+            val jameelNooriFont = android.graphics.Typeface.createFromAsset(assets, "fonts/Jameel_noori_nastaleeq.ttf")
+            binding.toolbarTitle.typeface = jameelNooriFont
+            binding.fileButton.typeface = jameelNooriFont
+        } catch (e: Exception) {}
+
+        binding.toolbar.setNavigationOnClickListener {
+            onBackPressedDispatcher.onBackPressed()
+        }
+
+        // Handle back press to check for unsaved changes
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                checkChangesAndExit()
+            }
+        })
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (!isDiscardingChanges) {
+            saveDocumentSilently()
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -54,21 +86,29 @@ class EditorActivity : AppCompatActivity() {
         mEditor = binding.editor
         mEditor.settings.javaScriptEnabled = true
         mEditor.settings.allowFileAccess = true
-        mEditor.addJavascriptInterface(WebAppInterface(), "Android") // Communication bridge
+        mEditor.addJavascriptInterface(WebAppInterface(), "Android")
         mEditor.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-        mEditor.textDirection = View.TEXT_DIRECTION_RTL
-        mEditor.settings.useWideViewPort = false
+        
+        // Let HTML handle RTL to avoid double-processing conflicts
+        // mEditor.textDirection = View.TEXT_DIRECTION_RTL 
 
-        // Enable zoom controls
+        // Important for A4 210mm fixed width content
+        mEditor.settings.useWideViewPort = true
+        mEditor.settings.loadWithOverviewMode = true // Initial fit
+        
+        // Zoom and Scroll configuration
         mEditor.settings.setSupportZoom(true)
         mEditor.settings.builtInZoomControls = true
-        mEditor.settings.displayZoomControls = false // Hide the on-screen zoom buttons
+        mEditor.settings.displayZoomControls = false
+        
+        mEditor.isVerticalScrollBarEnabled = true
+        mEditor.isHorizontalScrollBarEnabled = true
+        mEditor.scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
 
         mEditor.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 injectAllFontsCSS()
-                // Set the default font size in the editor's javascript
                 mEditor.evaluateJavascript("javascript:setDefaultFontSize('22px');", null)
                 loadDocument()
             }
@@ -87,6 +127,7 @@ class EditorActivity : AppCompatActivity() {
         binding.alignLeftButton.setOnClickListener { execJs("execCmd", "justifyLeft") }
         binding.alignCenterButton.setOnClickListener { execJs("execCmd", "justifyCenter") }
         binding.alignRightButton.setOnClickListener { execJs("execCmd", "justifyRight") }
+        binding.alignJustifyButton.setOnClickListener { execJs("execCmd", "justifyFull") }
 
         binding.bulletsButton.setOnClickListener { execJs("execCmd", "insertUnorderedList") }
         binding.bulletsButton.setOnLongClickListener {
@@ -95,6 +136,7 @@ class EditorActivity : AppCompatActivity() {
         }
         binding.numbersButton.setOnClickListener { execJs("execCmd", "insertOrderedList") }
 
+        binding.fontSelectButton.setOnClickListener { showFontSelectionDialog() }
         binding.symbolsButton.setOnClickListener { showSymbolsDialog() }
         binding.colorPickerButton.setOnClickListener { showColorPickerDialog() }
         binding.fontSizeButton.setOnClickListener { showFontSizeDialog() }
@@ -103,9 +145,8 @@ class EditorActivity : AppCompatActivity() {
     private fun setupFileMenu() {
         binding.fileButton.setOnClickListener {
             val options = arrayOf(
-                getString(R.string.new_document),
                 getString(R.string.save),
-                "Save As", // New Option
+                "نئے نام سے محفوظ کریں",
                 getString(R.string.save_as_pdf)
             )
 
@@ -113,41 +154,24 @@ class EditorActivity : AppCompatActivity() {
                 .setTitle("فائل")
                 .setItems(options) { _, which ->
                     when (which) {
-                        0 -> {
-                            currentDocPath = null // Reset path for new document
-                            execJs("clearAll")
-                        }
-                        1 -> saveDocument(false)
-                        2 -> saveDocument(true) // Force new name
-                        3 -> saveAsPdf()
+                        0 -> saveDocument(false)
+                        1 -> saveDocument(true) // Force new name
+                        2 -> saveAsPdf()
                     }
                 }
                 .show()
         }
     }
 
-    private fun setupFontSpinner() {
+    private fun loadFontList() {
         lifecycleScope.launch(Dispatchers.IO) {
-            val builtIn = assets.list("fonts")?.map { it.substringBefore(".") } ?: emptyList()
+            val builtIn = assets.list("fonts")?.map { it.substringBeforeLast(".") } ?: emptyList()
             val userFontsDir = File(filesDir, "user_fonts")
             val userFonts = userFontsDir.listFiles()?.map { it.nameWithoutExtension } ?: emptyList()
 
-            val allFonts = (builtIn + userFonts).toMutableList()
-
-            withContext(Dispatchers.Main) {
-                val adapter = ArrayAdapter(this@EditorActivity, android.R.layout.simple_spinner_item, allFonts)
-                adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-                binding.fontSpinner.adapter = adapter
-
-                binding.fontSpinner.onItemSelectedListener =
-                    object : AdapterView.OnItemSelectedListener {
-                        override fun onItemSelected(parent: AdapterView<*>, view: View?, pos: Int, id: Long) {
-                            val font = parent.getItemAtPosition(pos) as String
-                            applyFont(font)
-                        }
-                        override fun onNothingSelected(p0: AdapterView<*>) {}
-                    }
-            }
+            allFonts.clear()
+            allFonts.add("Default")
+            allFonts.addAll((builtIn + userFonts).distinct())
         }
     }
 
@@ -161,34 +185,49 @@ class EditorActivity : AppCompatActivity() {
             if (file.exists()) {
                 lifecycleScope.launch(Dispatchers.IO) {
                     val content = file.readText()
+                    loadedHtml = content
                     withContext(Dispatchers.Main) {
-                        val escapedContent = content.replace("'", "\'").replace("\"", "\\\"").replace("\n", "<br>")
-                        execJs("setDocumentHtml", escapedContent)
+                        // Encode to Base64 to prevent any JavaScript syntax/character escape issues
+                        val base64 = android.util.Base64.encodeToString(
+                            content.toByteArray(Charsets.UTF_8),
+                            android.util.Base64.NO_WRAP
+                        )
+                        mEditor.evaluateJavascript("javascript:setDocumentHtmlBase64('$base64');", null)
                     }
                 }
             }
         } else {
-            execJs("setDocumentHtml", "")
+            loadedHtml = ""
+            mEditor.evaluateJavascript("javascript:setDocumentHtmlBase64('');", null)
         }
     }
 
-    private fun saveDocument(forceNewName: Boolean) {
+    private fun saveDocument(forceNewName: Boolean, onSaved: (() -> Unit)? = null) {
         mEditor.evaluateJavascript("javascript:getDocumentHtml();") { html ->
-            val unescapedHtml = html.substring(1, html.length - 1) // Remove surrounding quotes
-                .replace("\\\"", "\"")
-                .replace("\'", "'")
+            val unescapedHtml = try {
+                if (html == null || html == "null") "" else JSONTokener(html).nextValue() as String
+            } catch (e: Exception) {
+                if (html != null && html.length >= 2) {
+                    html.substring(1, html.length - 1)
+                        .replace("\\\"", "\"")
+                        .replace("\\'", "'")
+                        .replace("\\\\", "\\")
+                } else {
+                    html ?: ""
+                }
+            }
 
             if (currentDocPath != null && !forceNewName) {
                 // Save to existing file
-                saveHtmlToFile(unescapedHtml, currentDocPath!!)
+                saveHtmlToFile(unescapedHtml, currentDocPath!!, onSaved)
             } else {
                 // Ask for a new name
-                askForFileNameAndSave(unescapedHtml)
+                askForFileNameAndSave(unescapedHtml, onSaved)
             }
         }
     }
 
-    private fun askForFileNameAndSave(htmlContent: String) {
+    private fun askForFileNameAndSave(htmlContent: String, onSaved: (() -> Unit)? = null) {
         val input = EditText(this@EditorActivity)
         val suggestedName = currentDocPath?.let { File(it).nameWithoutExtension } ?: ""
         input.setText(suggestedName)
@@ -202,7 +241,7 @@ class EditorActivity : AppCompatActivity() {
                     val docsDir = File(filesDir, "docs")
                     if (!docsDir.exists()) docsDir.mkdirs()
                     val file = File(docsDir, "$fileName.html")
-                    saveHtmlToFile(htmlContent, file.absolutePath)
+                    saveHtmlToFile(htmlContent, file.absolutePath, onSaved)
                 } else {
                     Toast.makeText(this@EditorActivity, "فائل کا نام خالی نہیں ہوسکتا", Toast.LENGTH_SHORT).show()
                 }
@@ -211,21 +250,106 @@ class EditorActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun saveHtmlToFile(htmlContent: String, path: String) {
+    private fun saveHtmlToFile(htmlContent: String, path: String, onSaved: (() -> Unit)? = null) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val file = File(path)
                 FileOutputStream(file).use { out ->
                     out.write(htmlContent.toByteArray())
                 }
+                backupToExternalFolder(file.name, htmlContent)
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@EditorActivity, "فائل محفوظ ہوگئی", Toast.LENGTH_SHORT).show()
                     currentDocPath = file.absolutePath // Update current path
+                    loadedHtml = htmlContent // Track the saved state
+                    onSaved?.invoke()
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@EditorActivity, "فائل محفوظ نہیں ہوسکی: ${e.message}", Toast.LENGTH_LONG).show()
                 }
+            }
+        }
+    }
+
+    private fun saveDocumentSilently() {
+        val path = currentDocPath ?: return
+        mEditor.evaluateJavascript("javascript:getDocumentHtml();") { html ->
+            if (html != null && html != "null") {
+                val unescapedHtml = try {
+                    JSONTokener(html).nextValue() as String
+                } catch (e: Exception) {
+                    html.substring(1, html.length - 1)
+                        .replace("\\\"", "\"")
+                        .replace("\\'", "'")
+                        .replace("\\\\", "\\")
+                }
+                if (unescapedHtml.trim() != loadedHtml.trim()) {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        try {
+                            val file = File(path)
+                            FileOutputStream(file).use { out ->
+                                out.write(unescapedHtml.toByteArray())
+                            }
+                            backupToExternalFolder(file.name, unescapedHtml)
+                            loadedHtml = unescapedHtml
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
+        }
+    }
+
+    private fun backupToExternalFolder(fileName: String, htmlContent: String) {
+        try {
+            val sharedPref = getSharedPreferences("UrduWriterPrefs", android.content.Context.MODE_PRIVATE)
+            val uriStr = sharedPref.getString("backup_folder_uri", null) ?: return
+            val uri = android.net.Uri.parse(uriStr)
+            val pickedDir = androidx.documentfile.provider.DocumentFile.fromTreeUri(this, uri)
+            if (pickedDir != null && pickedDir.canWrite()) {
+                val existingFile = pickedDir.findFile(fileName)
+                if (existingFile != null) {
+                    existingFile.delete()
+                }
+                val newFile = pickedDir.createFile("text/html", fileName)
+                if (newFile != null) {
+                    contentResolver.openOutputStream(newFile.uri)?.use { output ->
+                        output.write(htmlContent.toByteArray())
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun checkChangesAndExit() {
+        mEditor.evaluateJavascript("javascript:getDocumentHtml();") { html ->
+            val currentHtml = try {
+                if (html == null || html == "null") "" else JSONTokener(html).nextValue() as String
+            } catch (e: Exception) {
+                ""
+            }
+
+            if (currentHtml.trim() != loadedHtml.trim()) {
+                AlertDialog.Builder(this@EditorActivity)
+                    .setTitle("تبدیلیاں محفوظ کریں؟")
+                    .setMessage("کیا آپ اس دستاویز میں کی گئی تبدیلیاں محفوظ کرنا چاہتے ہیں؟")
+                    .setPositiveButton("محفوظ کریں") { dialog, _ ->
+                        dialog.dismiss()
+                        saveDocument(false) {
+                            finish()
+                        }
+                    }
+                    .setNegativeButton("محفوظ نہ کریں") { dialog, _ ->
+                        dialog.dismiss()
+                        isDiscardingChanges = true
+                        finish()
+                    }
+                    .setNeutralButton("منسوخ کریں", null)
+                    .show()
+            } else {
+                finish()
             }
         }
     }
@@ -250,11 +374,9 @@ class EditorActivity : AppCompatActivity() {
             val sizeValue = fontSize.replace("px", "").toFloatOrNull()?.toInt()
 
             runOnUiThread {
-                (binding.fontSpinner.adapter as? ArrayAdapter<String>)?.let { adapter ->
-                    val position = adapter.getPosition(primaryFont)
-                    if (position >= 0 && binding.fontSpinner.selectedItemPosition != position) {
-                        binding.fontSpinner.setSelection(position)
-                    }
+                binding.fontSelectButton.text = primaryFont
+                if (sizeValue != null) {
+                    binding.fontSizeButton.text = sizeValue.toString()
                 }
             }
         }
@@ -277,7 +399,7 @@ class EditorActivity : AppCompatActivity() {
             try {
                 val builtIn = assets.list("fonts")?.toList() ?: emptyList()
                 builtIn.forEach {
-                    val name = it.substringBefore(".")
+                    val name = it.substringBeforeLast(".")
                     val cssFriendlyName = name.replace("'", "\'")
                     val url = "file:///android_asset/fonts/$it"
                     css.append("@font-face { font-family:'$cssFriendlyName'; src:url('$url'); }")
@@ -325,16 +447,35 @@ class EditorActivity : AppCompatActivity() {
     }
 
     private fun insertSymbolWithFont(symbol: String, fontName: String) {
-        val escapedSymbol = symbol.replace("'", "\'")
-        val escapedFontName = fontName.replace("'", "\'")
+        val escapedSymbol = symbol.replace("'", "\\'").replace("\"", "\\\"")
+        val escapedFontName = fontName.replace("'", "\\'").replace("\"", "\\\"")
         execJs("insertSymbol", escapedSymbol, escapedFontName)
     }
 
     // --- Dialogs ---
 
+    private fun showFontSelectionDialog() {
+        if (allFonts.isEmpty()) loadFontList()
+        
+        val fontsArray = allFonts.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("فونٹ منتخب کریں")
+            .setItems(fontsArray) { _, which ->
+                val selectedFont = fontsArray[which]
+                binding.fontSelectButton.text = selectedFont
+                applyFont(selectedFont)
+            }
+            .show()
+    }
+
     private fun showFontSizeDialog() {
         val input = EditText(this)
         input.inputType = InputType.TYPE_CLASS_NUMBER
+        
+        // Pre-fill current size
+        val currentSize = binding.fontSizeButton.text.toString()
+        input.setText(currentSize)
+        input.setSelection(input.text.length)
 
         AlertDialog.Builder(this)
             .setTitle("فونٹ سائز منتخب کریں")
@@ -343,6 +484,7 @@ class EditorActivity : AppCompatActivity() {
             .setPositiveButton("ٹھیک ہے") { _, _ ->
                 val size = input.text.toString().toIntOrNull()
                 if (size != null && size in 8..150) {
+                    binding.fontSizeButton.text = size.toString()
                     applyFontSize(size)
                 } else {
                     Toast.makeText(this, "براہ کرم 8 اور 150 کے درمیان ایک نمبر درج کریں۔", Toast.LENGTH_SHORT).show()

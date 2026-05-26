@@ -18,13 +18,16 @@ import com.google.gson.reflect.TypeToken
 import com.sf.urduwriter.databinding.DialogSymbolsBinding
 import java.io.File
 
+data class RecentSymbol(val symbol: String, val fontName: String)
+
 class SymbolDialogFragment : DialogFragment() {
 
-    private lateinit var binding: DialogSymbolsBinding
-    private var listener: ((String, String) -> Unit)? = null
-    private lateinit var recentSymbols: MutableList<Pair<String, String>>
+    private var _binding: DialogSymbolsBinding? = null
+    private val binding get() = _binding!!
 
-    // Cache for loaded typefaces to improve performance
+    private var listener: ((String, String) -> Unit)? = null
+    private var recentSymbols: MutableList<RecentSymbol> = mutableListOf()
+
     private val typefaceCache = mutableMapOf<String, Typeface>()
 
     private val subsets = mapOf(
@@ -42,32 +45,37 @@ class SymbolDialogFragment : DialogFragment() {
     }
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
-        binding = DialogSymbolsBinding.inflate(LayoutInflater.from(context))
+        _binding = DialogSymbolsBinding.inflate(LayoutInflater.from(context))
+        
         loadRecentSymbols()
         setupFontSpinner()
         setupSubsetSpinner()
         updateRecentSymbolsGrid()
 
-        return AlertDialog.Builder(requireActivity())
-            .setTitle("Symbols")
+        return AlertDialog.Builder(requireContext())
+            .setTitle("سمبلز (Symbols)")
             .setView(binding.root)
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton("منسوخ کریں", null)
             .create()
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
         typefaceCache.clear()
     }
 
     private fun setupFontSpinner() {
         val fonts = mutableListOf("Default")
-        val builtInFonts = FontManager.getBuiltInFonts(requireContext()).map { it.substringBeforeLast(".") }
-        val userFonts = FontManager.getUserAddedFonts(requireContext()).map { it.substringBeforeLast(".") }
+        val context = context ?: return
+        
+        val builtInFonts = FontManager.getBuiltInFonts(context).map { it.substringBeforeLast(".") }
+        val userFonts = FontManager.getUserAddedFonts(context).map { it.substringBeforeLast(".") }
         fonts.addAll(builtInFonts)
         fonts.addAll(userFonts)
 
-        val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, fonts.distinct())
+        val distinctFonts = fonts.distinct()
+        val adapter = ArrayAdapter(context, android.R.layout.simple_spinner_item, distinctFonts)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.fontSpinner.adapter = adapter
         binding.fontSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -79,9 +87,10 @@ class SymbolDialogFragment : DialogFragment() {
     }
 
     private fun setupSubsetSpinner() {
+        val context = context ?: return
         val subsetNames = mutableListOf("All")
         subsetNames.addAll(subsets.keys)
-        val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, subsetNames)
+        val adapter = ArrayAdapter(context, android.R.layout.simple_spinner_item, subsetNames)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.subsetSpinner.adapter = adapter
         binding.subsetSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -90,12 +99,15 @@ class SymbolDialogFragment : DialogFragment() {
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
-        binding.subsetSpinner.setSelection(3) // Default to Arabic
+        
+        if (subsetNames.size > 3) {
+            binding.subsetSpinner.setSelection(3) // Default to Arabic if available
+        }
     }
 
     private fun updateSymbolGrid() {
-        val selectedFontName = binding.fontSpinner.selectedItem as String
-        val selectedSubsetName = binding.subsetSpinner.selectedItem as String
+        val selectedFontName = binding.fontSpinner.selectedItem as? String ?: "Default"
+        val selectedSubsetName = binding.subsetSpinner.selectedItem as? String ?: "All"
 
         val typeface = getTypeface(selectedFontName)
 
@@ -106,12 +118,12 @@ class SymbolDialogFragment : DialogFragment() {
             range?.map { it.toChar().toString() } ?: emptyList()
         }
 
-        val adapter = SymbolGridAdapter(symbols.map { it to selectedFontName }, typeface)
+        val adapter = SymbolGridAdapter(symbols.map { RecentSymbol(it, selectedFontName) }, typeface)
         binding.symbolsGrid.adapter = adapter
         binding.symbolsGrid.onItemClickListener = AdapterView.OnItemClickListener { _, _, position, _ ->
-            val (symbol, fontName) = adapter.getItem(position) as Pair<String, String>
-            addSymbolToRecents(symbol, fontName)
-            listener?.invoke(symbol, fontName)
+            val item = adapter.getItem(position)
+            addSymbolToRecents(item.symbol, item.fontName)
+            listener?.invoke(item.symbol, item.fontName)
             dismiss()
         }
     }
@@ -120,36 +132,75 @@ class SymbolDialogFragment : DialogFragment() {
         val adapter = SymbolGridAdapter(recentSymbols, null)
         binding.recentSymbolsGrid.adapter = adapter
         binding.recentSymbolsGrid.onItemClickListener = AdapterView.OnItemClickListener { _, _, position, _ ->
-            val (symbol, fontName) = recentSymbols[position]
-            listener?.invoke(symbol, fontName)
-            dismiss()
+            if (position < recentSymbols.size) {
+                val item = recentSymbols[position]
+                listener?.invoke(item.symbol, item.fontName)
+                dismiss()
+            }
         }
     }
 
     private fun addSymbolToRecents(symbol: String, fontName: String) {
-        val pair = symbol to fontName
-        recentSymbols.remove(pair)
-        recentSymbols.add(0, pair)
-        if (recentSymbols.size > 10) { // Keep only 10 recent symbols
-            recentSymbols.removeAt(10)
+        val item = RecentSymbol(symbol, fontName)
+        recentSymbols.remove(item)
+        recentSymbols.add(0, item)
+        if (recentSymbols.size > 12) { // Allow more recents
+            recentSymbols.removeAt(recentSymbols.size - 1)
         }
         saveRecentSymbols()
     }
 
     private fun saveRecentSymbols() {
-        val prefs = requireActivity().getSharedPreferences("UrduWriterPrefs", Context.MODE_PRIVATE)
+        val context = context ?: return
+        val prefs = context.getSharedPreferences("UrduWriterPrefs", Context.MODE_PRIVATE)
         val json = Gson().toJson(recentSymbols)
         prefs.edit().putString("recent_symbols", json).apply()
     }
 
     private fun loadRecentSymbols() {
-        val prefs = requireActivity().getSharedPreferences("UrduWriterPrefs", Context.MODE_PRIVATE)
+        val context = context ?: return
+        val prefs = context.getSharedPreferences("UrduWriterPrefs", Context.MODE_PRIVATE)
         val json = prefs.getString("recent_symbols", null)
-        recentSymbols = if (json != null) {
-            val type = object : TypeToken<MutableList<Pair<String, String>>>() {}.type
-            Gson().fromJson(json, type)
-        } else {
-            mutableListOf()
+        
+        recentSymbols = mutableListOf()
+        
+        if (!json.isNullOrEmpty()) {
+            try {
+                // Primary format attempt
+                val type = object : TypeToken<MutableList<RecentSymbol>>() {}.type
+                val loaded: MutableList<RecentSymbol>? = Gson().fromJson(json, type)
+                if (loaded != null) {
+                    recentSymbols = loaded
+                }
+            } catch (e: Exception) {
+                // Secondary check: If class names changed (inner to top-level), Gson might still recover 
+                // but let's try a safer migration from JSON string if possible.
+                try {
+                    // Try to parse as raw JSON array and reconstruct
+                    val array = com.google.gson.JsonParser.parseString(json).asJsonArray
+                    array.forEach { 
+                        val obj = it.asJsonObject
+                        val sym = obj.get("symbol")?.asString ?: ""
+                        val font = obj.get("fontName")?.asString ?: "Default"
+                        if (sym.isNotEmpty()) {
+                            recentSymbols.add(RecentSymbol(sym, font))
+                        }
+                    }
+                    saveRecentSymbols() // Save in clean format
+                } catch (e2: Exception) {
+                    // Final fallback: try the old Pair format
+                    try {
+                        val pairType = object : TypeToken<List<Pair<String, String>>>() {}.type
+                        val oldFormat: List<Pair<String, String>>? = Gson().fromJson(json, pairType)
+                        oldFormat?.forEach { 
+                            recentSymbols.add(RecentSymbol(it.first, it.second))
+                        }
+                        saveRecentSymbols()
+                    } catch (e3: Exception) {
+                        recentSymbols = mutableListOf()
+                    }
+                }
+            }
         }
     }
 
@@ -158,30 +209,28 @@ class SymbolDialogFragment : DialogFragment() {
             return typefaceCache[fontName] ?: Typeface.DEFAULT
         }
 
+        val context = context ?: return Typeface.DEFAULT
         val typeface: Typeface
         if (fontName == "Default") {
             typeface = Typeface.DEFAULT
         } else {
             var createdTypeface: Typeface? = null
-            // Try user fonts first
             try {
-                val userFontsDir = File(requireContext().filesDir, "user_fonts")
-                val userFontFile = File(userFontsDir, "$fontName.ttf").takeIf { it.exists() }
-                    ?: File(userFontsDir, "$fontName.otf").takeIf { it.exists() }
-                if (userFontFile != null) {
-                    createdTypeface = Typeface.createFromFile(userFontFile)
+                val userFontsDir = File(context.filesDir, "user_fonts")
+                val fontFile = userFontsDir.listFiles()?.find { it.nameWithoutExtension == fontName }
+                if (fontFile != null && fontFile.exists()) {
+                    createdTypeface = Typeface.createFromFile(fontFile)
                 }
-            } catch (e: Exception) { /* Ignore */ }
+            } catch (e: Exception) {}
 
-            // If not found, try assets
             if (createdTypeface == null) {
                 try {
-                    createdTypeface = Typeface.createFromAsset(requireContext().assets, "fonts/$fontName.ttf")
-                } catch (e: Exception) {
-                    try {
-                        createdTypeface = Typeface.createFromAsset(requireContext().assets, "fonts/$fontName.otf")
-                    } catch (e2: Exception) { /* Font not found */ }
-                }
+                    val assetFonts = context.assets.list("fonts") ?: emptyArray()
+                    val assetFile = assetFonts.find { it.substringBeforeLast(".") == fontName }
+                    if (assetFile != null) {
+                        createdTypeface = Typeface.createFromAsset(context.assets, "fonts/$assetFile")
+                    }
+                } catch (e: Exception) {}
             }
             typeface = createdTypeface ?: Typeface.DEFAULT
         }
@@ -191,26 +240,32 @@ class SymbolDialogFragment : DialogFragment() {
     }
 
     inner class SymbolGridAdapter(
-        private val symbols: List<Pair<String, String>>,
-        private val defaultTypeface: Typeface? // Used for the main grid where all symbols share one font
+        private val symbols: List<RecentSymbol>,
+        private val defaultTypeface: Typeface?
     ) : BaseAdapter() {
         override fun getCount(): Int = symbols.size
-        override fun getItem(position: Int): Any = symbols[position]
+        override fun getItem(position: Int): RecentSymbol = symbols[position]
         override fun getItemId(position: Int): Long = position.toLong()
 
         override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
+            val context = parent?.context ?: context ?: return View(parent?.context)
             val textView = if (convertView == null) {
-                TextView(requireContext()).apply {
-                    layoutParams = ViewGroup.LayoutParams(100, 100)
+                val size48dp = (48 * context.resources.displayMetrics.density).toInt()
+                TextView(context).apply {
+                    layoutParams = ViewGroup.LayoutParams(size48dp, size48dp)
                     textSize = 24f
                     gravity = android.view.Gravity.CENTER
+                    setTextColor(android.graphics.Color.BLACK)
                 }
             } else {
                 convertView as TextView
             }
-            val (symbol, fontName) = symbols[position]
-            textView.text = symbol
-            textView.typeface = defaultTypeface ?: getTypeface(fontName)
+            
+            if (position < symbols.size) {
+                val item = symbols[position]
+                textView.text = item.symbol
+                textView.typeface = defaultTypeface ?: getTypeface(item.fontName)
+            }
             return textView
         }
     }

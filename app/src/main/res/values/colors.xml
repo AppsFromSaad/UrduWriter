@@ -1,10 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="purple_200">#FFBB86FC</color>
-    <color name="purple_500">#FF6200EE</color>
-    <color name="purple_700">#FF3700B3</color>
-    <color name="teal_200">#FF03DAC5</color>
-    <color name="teal_700">#FF018786</color>
+    <color name="primary">#2D3436</color>
+    <color name="primary_variant">#1A1D1E</color>
+    <color name="primary_light">#40494C</color>
+    <color name="onPrimary">#FFFFFF</color>
+
+    <color name="secondary">#D4AF37</color>
+    <color name="secondary_variant">#B8860B</color>
+    <color name="onSecondary">#FFFFFF</color>
+
+    <color name="accent_gold_vibrant">#FFD700</color>
+    <color name="deep_royal_blue">#1A237E</color>
+    <color name="premium_gold">#C5A059</color>
+    
+    <color name="background">#F8F9FA</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="onSurface">#2D3436</color>
+    <color name="surface_variant">#F1F2F6</color>
+
+    <color name="text_primary">#2D3436</color>
+    <color name="text_secondary">#636E72</color>
+    <color name="text_hint">#B2BEC3</color>
+
+    <!-- Gradients -->
+    <color name="grad_start">#1A237E</color>
+    <color name="grad_end">#0D47A1</color>
+    
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="transparent">#00000000</color>
+    <color name="divider">#DFE6E9</color>
+    <color name="shadow_color">#1A000000</color>
 </resources>

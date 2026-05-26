@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
+import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import com.sf.urduwriter.databinding.ActivityPdfPreviewBinding
 import java.io.File
@@ -14,6 +15,7 @@ class PdfPreviewActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         binding = ActivityPdfPreviewBinding.inflate(layoutInflater)
         setContentView(binding.root)
 

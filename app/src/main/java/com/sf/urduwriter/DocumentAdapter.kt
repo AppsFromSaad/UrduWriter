@@ -3,7 +3,7 @@ package com.sf.urduwriter
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
+import android.widget.ImageButton
 import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
@@ -13,7 +13,8 @@ import java.util.*
 
 class DocumentAdapter(
     private val onDocumentClick: (Document) -> Unit,
-    private val onDeleteClick: (Document) -> Unit
+    private val onDeleteClick: (Document) -> Unit,
+    private val onShareClick: (Document) -> Unit
 ) : ListAdapter<Document, DocumentAdapter.DocumentViewHolder>(DocumentDiffCallback()) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): DocumentViewHolder {
@@ -29,13 +30,15 @@ class DocumentAdapter(
     inner class DocumentViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val nameTextView: TextView = itemView.findViewById(R.id.document_name)
         private val dateTextView: TextView = itemView.findViewById(R.id.document_date)
-        private val deleteButton: Button = itemView.findViewById(R.id.delete_button)
+        private val deleteButton: ImageButton = itemView.findViewById(R.id.delete_button)
+        private val shareButton: ImageButton = itemView.findViewById(R.id.share_button)
 
         fun bind(document: Document) {
             nameTextView.text = document.name
             dateTextView.text = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(document.lastModified))
             itemView.setOnClickListener { onDocumentClick(document) }
             deleteButton.setOnClickListener { onDeleteClick(document) }
+            shareButton.setOnClickListener { onShareClick(document) }
         }
     }
 }

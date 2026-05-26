@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
@@ -8,27 +9,31 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Bullet Library"
-        android:textAppearance="@style/TextAppearance.AppCompat.Medium" />
+        android:text="بلٹ لائبریری"
+        android:textStyle="bold"
+        android:textSize="18sp"
+        android:textColor="@color/black" />
 
     <GridView
         android:id="@+id/bulletsGrid"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="16dp"
         android:numColumns="auto_fit"
         android:columnWidth="48dp"
-        android:verticalSpacing="8dp"
-        android:horizontalSpacing="8dp"
-        android:stretchMode="columnWidth" />
+        android:verticalSpacing="12dp"
+        android:horizontalSpacing="12dp"
+        android:stretchMode="columnWidth"
+        android:gravity="center" />
 
-    <Button
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/defineNewBulletButton"
-        style="@style/Widget.AppCompat.Button.Borderless.Colored"
+        style="@style/Widget.Material3.Button.TextButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="Define New Bullet..."
-        android:textColor="@android:color/black" />
+        android:layout_marginTop="12dp"
+        android:text="+ نیا بلٹ منتخب کریں..."
+        app:icon="@drawable/ic_symbols"
+        android:textColor="@color/grad_start" />
 
 </LinearLayout>
