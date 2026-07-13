@@ -326,6 +326,9 @@
         }
 
         function changeFontSize(delta) {
+            editor.focus();
+            restoreSelection();
+
             const selection = window.getSelection();
             if (!selection.rangeCount) return;
             const range = selection.getRangeAt(0);
@@ -346,9 +349,6 @@
             }
 
             // Non-collapsed selection: adjust size of elements inside range relatively
-            editor.focus();
-            restoreSelection();
-            
             document.execCommand('styleWithCSS', false, false);
             document.execCommand('fontSize', false, '7');
 
