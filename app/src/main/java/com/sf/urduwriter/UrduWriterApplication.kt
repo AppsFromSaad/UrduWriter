@@ -9,5 +9,10 @@ class UrduWriterApplication : Application() {
         super.onCreate()
         FileUtils.getDocsDir(this)
         FileUtils.getUserFontsDir(this)
+
+        // Pre-warm the heavy Jameel Noori Nastaliq font in the background to avoid main-thread blocking
+        Thread {
+            FontManager.getFont(this, "fonts/Jameel_noori_nastaleeq.ttf")
+        }.start()
     }
 }

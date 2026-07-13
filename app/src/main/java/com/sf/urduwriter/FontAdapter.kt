@@ -40,12 +40,8 @@ class FontAdapter(
             try {
                 val typeface = if (font.name == "Default") {
                     android.graphics.Typeface.DEFAULT
-                } else if (!font.isDeletable) {
-                    android.graphics.Typeface.createFromAsset(binding.root.context.assets, "fonts/${font.name}")
                 } else {
-                    val userFontsDir = File(binding.root.context.filesDir, "user_fonts")
-                    val fontFile = File(userFontsDir, font.name)
-                    android.graphics.Typeface.createFromFile(fontFile)
+                    FontManager.getFont(binding.root.context, font.name)
                 }
                 binding.fontPreviewTextView.typeface = typeface
             } catch (e: Exception) {

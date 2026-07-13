@@ -25,7 +25,7 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var docAdapter: DocumentAdapter
 
     private val backupFolderLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
+        if (result.resultCode == RESULT_OK) {
             result.data?.data?.let { uri ->
                 saveBackupFolder(uri)
                 performBackup(uri)
@@ -34,7 +34,7 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private val restoreFolderLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
+        if (result.resultCode == RESULT_OK) {
             result.data?.data?.let { uri ->
                 performRestore(uri)
             }
@@ -50,25 +50,33 @@ class HomeActivity : AppCompatActivity() {
         setSupportActionBar(binding.toolbar)
         supportActionBar?.title = "اردو رائٹر"
 
-        // Set custom font across the layout
-        try {
-            val jameelNooriFont = Typeface.createFromAsset(assets, "fonts/Jameel_noori_nastaleeq.ttf")
-            binding.recentDocumentsLabel.typeface = jameelNooriFont
-            
-            // Apply font to toolbar title
-            binding.toolbar.post {
-                for (i in 0 until binding.toolbar.childCount) {
-                    val view = binding.toolbar.getChildAt(i)
-                    if (view is TextView) {
-                        view.typeface = jameelNooriFont
+        // Set custom font across the layout asynchronously
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val jameelNooriFont =
+                    FontManager.getFont(this@HomeActivity, "fonts/Jameel_noori_nastaleeq.ttf")
+                if (jameelNooriFont != null) {
+                    withContext(Dispatchers.Main) {
+                        binding.recentDocumentsLabel.typeface = jameelNooriFont
+
+                        // Apply font to toolbar title
+                        for (i in 0 until binding.toolbar.childCount) {
+                            val view = binding.toolbar.getChildAt(i)
+                            if (view is TextView) {
+                                view.typeface = jameelNooriFont
+                            }
+                        }
+
+                        // Apply to the main content area
+                        applyFontToViewGroup(
+                            binding.root as android.view.ViewGroup,
+                            jameelNooriFont
+                        )
                     }
                 }
+            } catch (e: Exception) {
+                // Font not found
             }
-            
-            // Apply to the main content area
-            applyFontToViewGroup(binding.root as android.view.ViewGroup, jameelNooriFont)
-        } catch (e: Exception) {
-            // Font not found
         }
 
         binding.newDocumentButtonCard.setOnClickListener {
@@ -126,9 +134,35 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private fun onDeleteClicked(document: Document) {
-        val file = File(document.path)
-        file.delete()
-        loadDocuments()
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(getString(R.string.delete_confirm_title))
+            .setMessage(getString(R.string.delete_confirm_message, document.name))
+            .setPositiveButton(getString(R.string.delete_confirm_positive)) { dialog, _ ->
+                val file = File(document.path)
+                file.delete()
+                loadDocuments()
+                dialog.dismiss()
+            }
+            .setNegativeButton(getString(R.string.delete_confirm_negative)) { dialog, _ ->
+                dialog.dismiss()
+            }
+            .create()
+            .apply {
+                show()
+                try {
+                    val jameelNooriFont =
+                        FontManager.getFont(this@HomeActivity, "fonts/Jameel_noori_nastaleeq.ttf")
+                    findViewById<TextView>(android.R.id.message)?.typeface = jameelNooriFont
+                    findViewById<TextView>(android.R.id.button1)?.typeface = jameelNooriFont
+                    findViewById<TextView>(android.R.id.button2)?.typeface = jameelNooriFont
+                    val titleId = resources.getIdentifier("alertTitle", "id", "android")
+                    if (titleId > 0) {
+                        findViewById<TextView>(titleId)?.typeface = jameelNooriFont
+                    }
+                } catch (e: Exception) {
+                    // Ignore font errors
+                }
+            }
     }
 
     private fun onShareClicked(document: Document) {
@@ -179,7 +213,7 @@ class HomeActivity : AppCompatActivity() {
             }
             startActivity(Intent.createChooser(shareIntent, "شیئر کریں (Share)"))
         } catch (e: Exception) {
-            android.widget.Toast.makeText(this, "شیئر کرنے میں مسئلہ: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "شیئر کرنے میں مسئلہ: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -219,7 +253,7 @@ class HomeActivity : AppCompatActivity() {
             val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             contentResolver.takePersistableUriPermission(uri, takeFlags)
 
-            val sharedPref = getSharedPreferences("UrduWriterPrefs", android.content.Context.MODE_PRIVATE)
+            val sharedPref = getSharedPreferences("UrduWriterPrefs", MODE_PRIVATE)
             sharedPref.edit().putString("backup_folder_uri", uri.toString()).apply()
         } catch (e: Exception) {
             e.printStackTrace()

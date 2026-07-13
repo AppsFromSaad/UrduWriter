@@ -147,6 +147,30 @@
                             app:icon="@drawable/ic_text_size"
                             app:iconSize="18dp"
                             app:iconTint="@color/text_secondary" />
+
+                        <View
+                            android:layout_width="1dp"
+                            android:layout_height="24dp"
+                            android:background="#D0D0D0"
+                            android:layout_marginHorizontal="4dp" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/fontSizeDownButton"
+                            style="@style/Widget.Material3.Button.IconButton"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            app:icon="@drawable/ic_text_size_decrease"
+                            app:iconSize="18dp"
+                            app:iconTint="@color/text_secondary" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/fontSizeUpButton"
+                            style="@style/Widget.Material3.Button.IconButton"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            app:icon="@drawable/ic_text_size_increase"
+                            app:iconSize="18dp"
+                            app:iconTint="@color/text_secondary" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
@@ -279,6 +303,22 @@
                         android:backgroundTint="#F0F7FF"
                         app:cornerRadius="12dp" />
                 </LinearLayout>
+
+                <View
+                    android:layout_width="12dp"
+                    android:layout_height="0dp" />
+
+                <!-- PAGE LAYOUT BUTTON -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pageLayoutButton"
+                    style="@style/Widget.Material3.Button.IconButton"
+                    android:layout_width="46dp"
+                    android:layout_height="40dp"
+                    app:icon="@drawable/ic_page_layout"
+                    app:iconSize="22dp"
+                    app:iconTint="@color/grad_start"
+                    android:backgroundTint="#F0F7FF"
+                    app:cornerRadius="12dp" />
 
             </LinearLayout>
         </HorizontalScrollView>

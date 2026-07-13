@@ -8,9 +8,14 @@
     <style>
         /* Modern Workspace Setup - Screen & Print Synchronization */
         :root {
-            --a4-width: 210mm;
-            --a4-min-height: 297mm;
+            --page-width: 210mm;
+            --page-height: 297mm;
             --page-margin: 0.75in;
+            --page-margin-top: 0.75in;
+            --page-margin-bottom: 0.75in;
+            --guideline-offset: 0px;
+            --printable-height: calc(var(--page-height) - var(--page-margin-top) - var(--page-margin-bottom) + var(--guideline-offset));
+            --guideline-color: #ff4d4d;
         }
 
         html,
@@ -40,20 +45,20 @@
         }
 
         #editor {
-            width: var(--a4-width);
-            min-height: var(--a4-min-height);
+            width: var(--page-width);
+            min-height: var(--page-height);
 
-            /* The margin MUST be inside the 210mm box as padding to match print perfectly */
+            /* The margin MUST be inside the page box as padding to match print perfectly */
             padding: var(--page-margin);
             background: white;
             box-sizing: border-box;
             box-shadow: 0 4px 25px rgba(0, 0, 0, 0.15);
             border-radius: 2px;
 
+            direction: rtl;
             font-family: inherit;
             font-size: 22px !important;
             line-height: 1.8;
-            word-spacing: -0.05em; /* Slightly tighter spacing for Urdu Nastaliq aesthetics */
             outline: none;
             overflow-wrap: break-word;
             word-wrap: break-word;
@@ -63,6 +68,36 @@
             /* Force exact rendering */
             white-space: pre-wrap;
             word-break: normal;
+
+            /* Visual page break guidelines - repeating exactly at printable content boundaries */
+            background-image: linear-gradient(to bottom, 
+                transparent 0px, 
+                transparent calc(var(--printable-height) - 1.5px), 
+                var(--guideline-color) calc(var(--printable-height) - 1.5px), 
+                var(--guideline-color) var(--printable-height)
+            );
+            background-size: 100% var(--printable-height);
+            background-position: 0 var(--page-margin-top);
+            background-repeat: repeat-y;
+        }
+
+        /* Ensure all block elements created inside editor have explicit RTL layout and alignment */
+        #editor > div,
+        #editor > p,
+        #editor > blockquote,
+        #editor > li {
+            direction: rtl;
+            text-align: right;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        /* Optimize line height of empty paragraphs/divs (when user presses Enter) to match normal font heights and look neat */
+        #editor div:has(> br:only-child),
+        #editor p:has(> br:only-child),
+        #editor div:empty,
+        #editor p:empty {
+            line-height: 1.0 !important;
         }
 
         u {
@@ -76,14 +111,14 @@
         @media print {
             @page {
                 size: A4 portrait;
-                margin: 0;
+                margin: 0.75in;
             }
 
             html,
             body {
                 background: white !important;
-                width: 210mm !important;
-                height: 297mm !important;
+                width: auto !important;
+                height: auto !important;
                 display: block !important;
                 margin: 0 !important;
                 padding: 0 !important;
@@ -93,17 +128,18 @@
                 padding: 0 !important;
                 margin: 0 !important;
                 display: block !important;
-                width: 210mm !important;
+                width: 100% !important;
             }
 
             #editor {
-                width: 210mm !important;
-                min-height: 297mm !important;
-                padding: 0.75in !important; /* Exact same padding as screen */
+                width: 100% !important;
+                min-height: 0 !important;
+                padding: 0 !important;
                 margin: 0 !important;
                 box-shadow: none !important;
                 border: none !important;
                 background: white !important;
+                background-image: none !important; /* Hide guidelines in print */
 
                 /* Hide cursor in PDF */
                 caret-color: transparent !important;
@@ -113,15 +149,21 @@
                 page-break-inside: auto;
             }
 
-            /* Prevent splitting lines or paragraphs awkwardly */
+            /* Allow elements to split naturally on page breaks without restrictions */
             #editor p,
             #editor div,
             #editor li,
-            #editor span {
-                page-break-inside: avoid;
-                break-inside: avoid;
-                orphans: 3;
-                widows: 3;
+            #editor blockquote,
+            #editor h1,
+            #editor h2,
+            #editor h3,
+            #editor h4,
+            #editor h5,
+            #editor h6 {
+                orphans: 1 !important;
+                widows: 1 !important;
+                page-break-inside: auto !important;
+                break-inside: auto !important;
             }
         }
     </style>
@@ -129,7 +171,7 @@
 
 <body>
     <div id="page-container">
-        <div id="editor" contenteditable="true"></div>
+        <div id="editor" contenteditable="true" dir="rtl"></div>
     </div>
 
     <script>
@@ -138,13 +180,239 @@
         // Enable CSS mode for commands
         document.execCommand('styleWithCSS', false, true);
 
+        // Intercept Tab key to insert a real tab character instead of shifting focus
+        editor.addEventListener('keydown', function(e) {
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                document.execCommand('insertText', false, '\t');
+            }
+        });
+
+        let savedRange = null;
+
+        document.addEventListener('selectionchange', () => {
+            const sel = window.getSelection();
+            if (sel.rangeCount > 0) {
+                const range = sel.getRangeAt(0);
+                if (editor.contains(range.commonAncestorContainer)) {
+                    savedRange = range.cloneRange();
+                }
+            }
+        });
+
+        function restoreSelection() {
+            if (savedRange) {
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(savedRange);
+            }
+        }
+
         function setDefaultFontSize(size) {
             editor.style.fontSize = size;
         }
 
+        function setPageSettings(pageSize, marginValue, showLines, guidelineOffset, isLandscape, customWidth, customHeight) {
+            const root = document.documentElement;
+            
+            let widthVal = 210;
+            let heightVal = 297;
+            let unit = 'mm';
+            let printSizeStr = 'A4';
+            
+            if (pageSize === 'Letter') {
+                widthVal = 215.9;
+                heightVal = 279.4;
+                printSizeStr = 'letter';
+            } else if (pageSize === 'Legal') {
+                widthVal = 215.9;
+                heightVal = 355.6;
+                printSizeStr = 'legal';
+            } else if (pageSize === 'A3') {
+                widthVal = 297;
+                heightVal = 420;
+                printSizeStr = 'A3';
+            } else if (pageSize === 'A5') {
+                widthVal = 148;
+                heightVal = 210;
+                printSizeStr = 'A5';
+            } else if (pageSize === 'Executive') {
+                widthVal = 184.1;
+                heightVal = 266.7;
+                printSizeStr = 'executive';
+            } else if (pageSize === 'Custom') {
+                unit = 'in';
+                widthVal = parseFloat(customWidth) || 8.27;
+                heightVal = parseFloat(customHeight) || 11.69;
+                let printWidth = isLandscape ? heightVal : widthVal;
+                let printHeight = isLandscape ? widthVal : heightVal;
+                printSizeStr = `${printWidth}in ${printHeight}in`;
+            }
+
+            let width = isLandscape ? (heightVal + unit) : (widthVal + unit);
+            let height = isLandscape ? (widthVal + unit) : (heightVal + unit);
+            
+            if (pageSize !== 'Custom') {
+                let printOrientation = isLandscape ? 'landscape' : 'portrait';
+                printSizeStr = printSizeStr + ' ' + printOrientation;
+            }
+            
+            // Parse top and bottom margins from marginValue to compute correct guideline repetitions
+            let marginTop = '0.75in';
+            let marginBottom = '0.75in';
+            const marginParts = marginValue.trim().split(/\s+/);
+            if (marginParts.length === 1) {
+                marginTop = marginParts[0];
+                marginBottom = marginParts[0];
+            } else if (marginParts.length === 2) {
+                marginTop = marginParts[0];
+                marginBottom = marginParts[0];
+            } else if (marginParts.length >= 3) {
+                marginTop = marginParts[0];
+                marginBottom = marginParts[2];
+            }
+
+            root.style.setProperty('--page-width', width);
+            root.style.setProperty('--page-height', height);
+            root.style.setProperty('--page-margin', marginValue);
+            root.style.setProperty('--page-margin-top', marginTop);
+            root.style.setProperty('--page-margin-bottom', marginBottom);
+            root.style.setProperty('--guideline-offset', (guidelineOffset || 0) + 'px');
+            root.style.setProperty('--printable-height', `calc(${height} - ${marginTop} - ${marginBottom} + var(--guideline-offset))`);
+            root.style.setProperty('--guideline-color', showLines ? '#ff4d4d' : 'transparent');
+            
+            let printStyle = document.getElementById('printSettings');
+            if (!printStyle) {
+                printStyle = document.createElement('style');
+                printStyle.id = 'printSettings';
+                document.head.appendChild(printStyle);
+            }
+            printStyle.innerHTML = `
+                @media print {
+                    @page {
+                        size: ${printSizeStr};
+                        margin: ${marginValue};
+                    }
+                }
+            `;
+        }
+
+        function getSelectionFontSize() {
+            const selection = window.getSelection();
+            if (!selection.rangeCount) return 22;
+            
+            const range = selection.getRangeAt(0);
+            let node = range.startContainer;
+            if (node.nodeType === Node.TEXT_NODE) {
+                node = node.parentNode;
+            }
+            
+            // If node is editor, look at first child inside range
+            if (node === editor && range.startOffset < editor.childNodes.length) {
+                let child = editor.childNodes[range.startOffset];
+                if (child.nodeType === Node.TEXT_NODE) {
+                    child = child.parentNode;
+                }
+                if (child && child.nodeType === Node.ELEMENT_NODE) {
+                    node = child;
+                }
+            }
+            
+            if (node && node.nodeType === Node.ELEMENT_NODE && (editor === node || editor.contains(node))) {
+                const style = window.getComputedStyle(node);
+                return parseInt(style.fontSize, 10) || 22;
+            }
+            return 22;
+        }
+
+        function changeFontSize(delta) {
+            const selection = window.getSelection();
+            if (!selection.rangeCount) return;
+            const range = selection.getRangeAt(0);
+            
+            const numericDelta = parseInt(delta, 10);
+            
+            if (selection.isCollapsed) {
+                // Collapsed selection: change size of new text
+                const currentSize = getSelectionFontSize();
+                let newSize = currentSize + numericDelta;
+                if (newSize < 8) newSize = 8;
+                if (newSize > 150) newSize = 150;
+                applyFontSize(newSize);
+                if (window.Android && typeof window.Android.updateCurrentStyle === 'function') {
+                    window.Android.updateCurrentStyle(lastReportedFont, newSize + 'px');
+                }
+                return;
+            }
+
+            // Non-collapsed selection: adjust size of elements inside range relatively
+            editor.focus();
+            restoreSelection();
+            
+            document.execCommand('styleWithCSS', false, false);
+            document.execCommand('fontSize', false, '7');
+
+            const fontElements = editor.querySelectorAll("font[size='7']");
+            let firstSpan = null;
+            let lastSpan = null;
+
+            fontElements.forEach(el => {
+                el.removeAttribute("size");
+                
+                const parentStyle = window.getComputedStyle(el.parentNode);
+                const originalSize = parseInt(parentStyle.fontSize, 10) || 22;
+                
+                let newSize = originalSize + numericDelta;
+                if (newSize < 8) newSize = 8;
+                if (newSize > 150) newSize = 150;
+
+                const span = document.createElement('span');
+                span.style.fontSize = newSize + "px";
+                if (el.style.fontFamily) span.style.fontFamily = el.style.fontFamily;
+                if (el.style.color) span.style.color = el.style.color;
+                if (el.face) span.style.fontFamily = el.face;
+                if (el.color) span.style.color = el.color;
+
+                while (el.firstChild) span.appendChild(el.firstChild);
+                el.parentNode.replaceChild(span, el);
+
+                if (!firstSpan) firstSpan = span;
+                lastSpan = span;
+            });
+
+            if (firstSpan && lastSpan) {
+                const range = document.createRange();
+                range.setStartBefore(firstSpan);
+                range.setEndAfter(lastSpan);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
+
+            document.execCommand('styleWithCSS', false, true);
+
+            // Refresh saved selection range
+            const sel = window.getSelection();
+            if (sel.rangeCount > 0) {
+                savedRange = sel.getRangeAt(0).cloneRange();
+            }
+
+            // Report new style to Android based on selection start
+            if (window.Android && typeof window.Android.updateCurrentStyle === 'function') {
+                const newSize = getSelectionFontSize();
+                window.Android.updateCurrentStyle(lastReportedFont, newSize + 'px');
+            }
+        }
+
         function execCmd(command, value) {
             editor.focus();
+            restoreSelection();
             document.execCommand(command, false, value || null);
+            // Refresh saved selection range
+            const sel = window.getSelection();
+            if (sel.rangeCount > 0) {
+                savedRange = sel.getRangeAt(0).cloneRange();
+            }
         }
 
         function getDocumentHtml() { return editor.innerHTML; }
@@ -174,6 +442,7 @@
 
         function setListBullet(bulletChar) {
             editor.focus();
+            restoreSelection();
             const selection = window.getSelection();
             if (!selection.rangeCount) return;
 
@@ -211,6 +480,8 @@
 
         // --- Font Size Solution ---
         function applyFontSize(size) {
+            editor.focus();
+            restoreSelection();
             const selection = window.getSelection();
             if (!selection.rangeCount) return;
 
@@ -234,6 +505,9 @@
 
                 // Find the marked tags and apply exact pixel size
                 const fontElements = editor.querySelectorAll("font[size='7']");
+                let firstSpan = null;
+                let lastSpan = null;
+
                 fontElements.forEach(el => {
                     el.removeAttribute("size");
                     el.style.fontSize = size + "px";
@@ -248,10 +522,28 @@
 
                     while (el.firstChild) span.appendChild(el.firstChild);
                     el.parentNode.replaceChild(span, el);
+
+                    if (!firstSpan) firstSpan = span;
+                    lastSpan = span;
                 });
+
+                // Re-select the newly formatted spans
+                if (firstSpan && lastSpan) {
+                    const range = document.createRange();
+                    range.setStartBefore(firstSpan);
+                    range.setEndAfter(lastSpan);
+                    const sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                }
 
                 // Switch back to CSS mode
                 document.execCommand('styleWithCSS', false, true);
+            }
+            // Refresh saved selection range
+            const sel = window.getSelection();
+            if (sel.rangeCount > 0) {
+                savedRange = sel.getRangeAt(0).cloneRange();
             }
         }
 
@@ -264,6 +556,8 @@
         }
 
         function insertSymbol(symbol, fontName) {
+            editor.focus();
+            restoreSelection();
             const selection = window.getSelection();
             if (!selection.rangeCount) return;
             const range = selection.getRangeAt(0);
@@ -307,6 +601,9 @@
             selection.addRange(range);
 
             editor.focus();
+            if (selection.rangeCount > 0) {
+                savedRange = selection.getRangeAt(0).cloneRange();
+            }
         }
 
         // --- Current Style Detection ---
@@ -337,6 +634,39 @@
                 return { fontName, fontSize };
             }
             return null;
+        }
+
+        function preparePrint() {
+            window.tempOriginalHtml = editor.innerHTML;
+            
+            function isNodeEmpty(node) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    return node.textContent.trim() === '';
+                }
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                    const tag = node.nodeName.toUpperCase();
+                    if (tag === 'IMG' || tag === 'TABLE' || tag === 'HR' || tag === 'IFRAME') {
+                        return false;
+                    }
+                    if (tag === 'BR') return true;
+                    for (let i = 0; i < node.childNodes.length; i++) {
+                        if (!isNodeEmpty(node.childNodes[i])) return false;
+                    }
+                    return true;
+                }
+                return true;
+            }
+
+            while (editor.lastChild && isNodeEmpty(editor.lastChild)) {
+                editor.removeChild(editor.lastChild);
+            }
+        }
+
+        function restorePrint() {
+            if (window.tempOriginalHtml !== undefined) {
+                editor.innerHTML = window.tempOriginalHtml;
+                delete window.tempOriginalHtml;
+            }
         }
 
         editor.addEventListener('click', getCurrentStyle);

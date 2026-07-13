@@ -8,4 +8,8 @@
     <string name="failed_to_save_font">فونٹ محفوظ کرنے میں ناکامی: %s</string>
     <string name="font_deleted">\'%s\' حذف ہوگیا</string>
     <string name="failed_to_delete_font">\'%s\' حذف نہیں ہوسکا</string>
+    <string name="delete_confirm_title">تحریر حذف کریں؟</string>
+    <string name="delete_confirm_message">کیا آپ واقعی \'%s\' کو حذف کرنا چاہتے ہیں؟</string>
+    <string name="delete_confirm_positive">حذف کریں</string>
+    <string name="delete_confirm_negative">منسوخ کریں</string>
 </resources>

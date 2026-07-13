@@ -1,11 +1,40 @@
 package com.sf.urduwriter
 
 import android.content.Context
+import android.graphics.Typeface
 import com.sf.urduwriter.FileUtils
 import java.io.File
 import java.io.FilenameFilter
+import java.util.concurrent.ConcurrentHashMap
 
 object FontManager {
+
+    private val typefaceCache = ConcurrentHashMap<String, Typeface>()
+
+    fun getFont(context: Context, fontPathOrName: String): Typeface? {
+        if (typefaceCache.containsKey(fontPathOrName)) {
+            return typefaceCache[fontPathOrName]
+        }
+        return try {
+            val typeface = if (fontPathOrName.startsWith("fonts/")) {
+                Typeface.createFromAsset(context.assets, fontPathOrName)
+            } else {
+                val userFontsDir = FileUtils.getUserFontsDir(context)
+                val fontFile = File(userFontsDir, fontPathOrName)
+                if (fontFile.exists()) {
+                    Typeface.createFromFile(fontFile)
+                } else {
+                    Typeface.createFromAsset(context.assets, "fonts/$fontPathOrName")
+                }
+            }
+            if (typeface != null) {
+                typefaceCache[fontPathOrName] = typeface
+            }
+            typeface
+        } catch (e: Exception) {
+            null
+        }
+    }
 
     fun getBuiltInFonts(context: Context): List<String> {
         return try {

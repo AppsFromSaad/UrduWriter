@@ -22,10 +22,14 @@ import androidx.lifecycle.lifecycleScope
 import com.github.dhaval2404.colorpicker.ColorPickerDialog
 import com.github.dhaval2404.colorpicker.model.ColorShape
 import com.sf.urduwriter.databinding.ActivityEditorBinding
+import android.os.CancellationSignal
+import android.print.PageRange
+import android.os.ParcelFileDescriptor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONTokener
+import android.util.JsonReader
+import android.util.JsonToken
 import java.io.File
 import java.io.FileOutputStream
 
@@ -55,12 +59,20 @@ class EditorActivity : AppCompatActivity() {
         setupFileMenu()
         loadFontList()
 
-        // Apply Nastaliq font to title and layout
-        try {
-            val jameelNooriFont = android.graphics.Typeface.createFromAsset(assets, "fonts/Jameel_noori_nastaleeq.ttf")
-            binding.toolbarTitle.typeface = jameelNooriFont
-            binding.fileButton.typeface = jameelNooriFont
-        } catch (e: Exception) {}
+        // Apply Nastaliq font to title and layout asynchronously
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val jameelNooriFont =
+                    FontManager.getFont(this@EditorActivity, "fonts/Jameel_noori_nastaleeq.ttf")
+                if (jameelNooriFont != null) {
+                    withContext(Dispatchers.Main) {
+                        binding.toolbarTitle.typeface = jameelNooriFont
+                        binding.fileButton.typeface = jameelNooriFont
+                    }
+                }
+            } catch (e: Exception) {
+            }
+        }
 
         binding.toolbar.setNavigationOnClickListener {
             onBackPressedDispatcher.onBackPressed()
@@ -84,6 +96,11 @@ class EditorActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupEditor() {
         mEditor = binding.editor
+
+        // Disable cache to ensure asset changes take effect immediately
+        mEditor.settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+        mEditor.clearCache(true)
+        
         mEditor.settings.javaScriptEnabled = true
         mEditor.settings.allowFileAccess = true
         mEditor.addJavascriptInterface(WebAppInterface(), "Android")
@@ -110,6 +127,19 @@ class EditorActivity : AppCompatActivity() {
                 super.onPageFinished(view, url)
                 injectAllFontsCSS()
                 mEditor.evaluateJavascript("javascript:setDefaultFontSize('22px');", null)
+
+                // Load and apply page settings on page finished
+                val sharedPref = getSharedPreferences("UrduWriterPrefs", MODE_PRIVATE)
+                val pageSize = sharedPref.getString("pref_page_size", "A4") ?: "A4"
+                val pageMargin = sharedPref.getString("pref_page_margin", "0.75in") ?: "0.75in"
+                val isLandscape = sharedPref.getBoolean("pref_page_landscape", false)
+                val customWidth = sharedPref.getFloat("pref_custom_page_width", 8.27f)
+                val customHeight = sharedPref.getFloat("pref_custom_page_height", 11.69f)
+                mEditor.evaluateJavascript(
+                    "javascript:setPageSettings('$pageSize', '$pageMargin', false, 0, $isLandscape, $customWidth, $customHeight);",
+                    null
+                )
+
                 loadDocument()
             }
         }
@@ -140,6 +170,9 @@ class EditorActivity : AppCompatActivity() {
         binding.symbolsButton.setOnClickListener { showSymbolsDialog() }
         binding.colorPickerButton.setOnClickListener { showColorPickerDialog() }
         binding.fontSizeButton.setOnClickListener { showFontSizeDialog() }
+        binding.fontSizeUpButton.setOnClickListener { execJs("changeFontSize", "2") }
+        binding.fontSizeDownButton.setOnClickListener { execJs("changeFontSize", "-2") }
+        binding.pageLayoutButton.setOnClickListener { showPageLayoutDialog() }
     }
 
     private fun setupFileMenu() {
@@ -147,6 +180,7 @@ class EditorActivity : AppCompatActivity() {
             val options = arrayOf(
                 getString(R.string.save),
                 "نئے نام سے محفوظ کریں",
+                "صفحہ کی ترتیب (Page Layout)",
                 getString(R.string.save_as_pdf)
             )
 
@@ -156,7 +190,8 @@ class EditorActivity : AppCompatActivity() {
                     when (which) {
                         0 -> saveDocument(false)
                         1 -> saveDocument(true) // Force new name
-                        2 -> saveAsPdf()
+                        2 -> showPageLayoutDialog()
+                        3 -> showPdfExportOptions()
                     }
                 }
                 .show()
@@ -184,7 +219,22 @@ class EditorActivity : AppCompatActivity() {
             val file = File(path)
             if (file.exists()) {
                 lifecycleScope.launch(Dispatchers.IO) {
-                    val content = file.readText()
+                    var content = file.readText()
+
+                    // Repair corrupted HTML if it contains escaped unicode patterns from previous bugs
+                    if (content.contains(
+                            "\\u003c",
+                            ignoreCase = true
+                        ) || content.contains("\\u003e", ignoreCase = true)
+                    ) {
+                        content = repairCorruptedHtml(content)
+                        try {
+                            file.writeText(content)
+                            backupToExternalFolder(file.name, content)
+                        } catch (_: Exception) {
+                        }
+                    }
+                    
                     loadedHtml = content
                     withContext(Dispatchers.Main) {
                         // Encode to Base64 to prevent any JavaScript syntax/character escape issues
@@ -202,20 +252,57 @@ class EditorActivity : AppCompatActivity() {
         }
     }
 
-    private fun saveDocument(forceNewName: Boolean, onSaved: (() -> Unit)? = null) {
-        mEditor.evaluateJavascript("javascript:getDocumentHtml();") { html ->
-            val unescapedHtml = try {
-                if (html == null || html == "null") "" else JSONTokener(html).nextValue() as String
+    private fun repairCorruptedHtml(corrupted: String): String {
+        var result = corrupted
+        // Unescape unicode sequences like \u003C or \u003E
+        val unicodeRegex = """\\u([0-9a-fA-F]{4})""".toRegex()
+        result = unicodeRegex.replace(result) { matchResult ->
+            val hexVal = matchResult.groupValues[1]
+            try {
+                hexVal.toInt(16).toChar().toString()
             } catch (e: Exception) {
-                if (html != null && html.length >= 2) {
-                    html.substring(1, html.length - 1)
-                        .replace("\\\"", "\"")
-                        .replace("\\'", "'")
-                        .replace("\\\\", "\\")
+                matchResult.value
+            }
+        }
+        // Also replace other common escapes that might have been left over
+        result = result
+            .replace("\\\"", "\"")
+            .replace("\\'", "'")
+            .replace("\\\\", "\\")
+        return result
+    }
+
+    private fun unescapeJsonString(json: String?): String {
+        if (json == null || json == "null" || json.isEmpty()) return ""
+        val reader = JsonReader(java.io.StringReader(json))
+        reader.isLenient = true
+        return try {
+            if (reader.peek() == JsonToken.STRING) {
+                reader.nextString()
+            } else {
+                if (json.startsWith("\"") && json.endsWith("\"") && json.length >= 2) {
+                    json.substring(1, json.length - 1)
                 } else {
-                    html ?: ""
+                    json
                 }
             }
+        } catch (e: Exception) {
+            if (json.startsWith("\"") && json.endsWith("\"") && json.length >= 2) {
+                json.substring(1, json.length - 1)
+            } else {
+                json
+            }
+        } finally {
+            try {
+                reader.close()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun saveDocument(forceNewName: Boolean, onSaved: (() -> Unit)? = null) {
+        mEditor.evaluateJavascript("javascript:getDocumentHtml();") { html ->
+            val unescapedHtml = unescapeJsonString(html)
 
             if (currentDocPath != null && !forceNewName) {
                 // Save to existing file
@@ -276,14 +363,7 @@ class EditorActivity : AppCompatActivity() {
         val path = currentDocPath ?: return
         mEditor.evaluateJavascript("javascript:getDocumentHtml();") { html ->
             if (html != null && html != "null") {
-                val unescapedHtml = try {
-                    JSONTokener(html).nextValue() as String
-                } catch (e: Exception) {
-                    html.substring(1, html.length - 1)
-                        .replace("\\\"", "\"")
-                        .replace("\\'", "'")
-                        .replace("\\\\", "\\")
-                }
+                val unescapedHtml = unescapeJsonString(html)
                 if (unescapedHtml.trim() != loadedHtml.trim()) {
                     lifecycleScope.launch(Dispatchers.IO) {
                         try {
@@ -302,7 +382,7 @@ class EditorActivity : AppCompatActivity() {
 
     private fun backupToExternalFolder(fileName: String, htmlContent: String) {
         try {
-            val sharedPref = getSharedPreferences("UrduWriterPrefs", android.content.Context.MODE_PRIVATE)
+            val sharedPref = getSharedPreferences("UrduWriterPrefs", MODE_PRIVATE)
             val uriStr = sharedPref.getString("backup_folder_uri", null) ?: return
             val uri = android.net.Uri.parse(uriStr)
             val pickedDir = androidx.documentfile.provider.DocumentFile.fromTreeUri(this, uri)
@@ -325,11 +405,7 @@ class EditorActivity : AppCompatActivity() {
 
     private fun checkChangesAndExit() {
         mEditor.evaluateJavascript("javascript:getDocumentHtml();") { html ->
-            val currentHtml = try {
-                if (html == null || html == "null") "" else JSONTokener(html).nextValue() as String
-            } catch (e: Exception) {
-                ""
-            }
+            val currentHtml = unescapeJsonString(html)
 
             if (currentHtml.trim() != loadedHtml.trim()) {
                 AlertDialog.Builder(this@EditorActivity)
@@ -355,14 +431,218 @@ class EditorActivity : AppCompatActivity() {
     }
 
     private fun saveAsPdf() {
+        val sharedPref = getSharedPreferences("UrduWriterPrefs", MODE_PRIVATE)
+        val pageSize = sharedPref.getString("pref_page_size", "A4") ?: "A4"
+        val isLandscape = sharedPref.getBoolean("pref_page_landscape", false)
+
         val printManager = getSystemService(PRINT_SERVICE) as PrintManager
         val jobName = "${getString(R.string.app_name)} Document"
-        val printAdapter: PrintDocumentAdapter = mEditor.createPrintDocumentAdapter(jobName)
+        val printAdapter = getWrappedPrintAdapter(jobName)
+
+        var mediaSize = when (pageSize) {
+            "Letter" -> PrintAttributes.MediaSize.NA_LETTER
+            "Legal" -> PrintAttributes.MediaSize.NA_LEGAL
+            "A3" -> PrintAttributes.MediaSize.ISO_A3
+            "A5" -> PrintAttributes.MediaSize.ISO_A5
+            "Executive" -> PrintAttributes.MediaSize("EXECUTIVE", "Executive", 7250, 10500)
+            "Custom" -> {
+                val customWidth = sharedPref.getFloat("pref_custom_page_width", 8.27f)
+                val customHeight = sharedPref.getFloat("pref_custom_page_height", 11.69f)
+                val widthMils = Math.round(customWidth * 1000).toInt()
+                val heightMils = Math.round(customHeight * 1000).toInt()
+                PrintAttributes.MediaSize("CUSTOM_SIZE", "Custom", widthMils, heightMils)
+            }
+
+            else -> PrintAttributes.MediaSize.ISO_A4
+        }
+
+        if (isLandscape) {
+            mediaSize = mediaSize.asLandscape()
+        }
+
         val printAttributes = PrintAttributes.Builder()
-            .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+            .setMediaSize(mediaSize)
             .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
             .build()
         printManager.print(jobName, printAdapter, printAttributes)
+    }
+
+    private val RC_CREATE_PDF = 1001
+
+    private fun showPdfExportOptions() {
+        val options = arrayOf(
+            "براہ راست فائل میں ایکسپورٹ کریں (Direct Export)",
+            "سسٹم پرنٹ ڈائیلاگ استعمال کریں (Print View)"
+        )
+        AlertDialog.Builder(this)
+            .setTitle("پی ڈی ایف فارمیٹ میں محفوظ کریں")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> startDirectPdfExport()
+                    1 -> saveAsPdf()
+                }
+            }
+            .show()
+    }
+
+    private fun startDirectPdfExport() {
+        val suggestedName =
+            currentDocPath?.let { File(it).nameWithoutExtension } ?: "UrduWriter_Document"
+        val intent = android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(android.content.Intent.CATEGORY_OPENABLE)
+            type = "application/pdf"
+            putExtra(android.content.Intent.EXTRA_TITLE, "$suggestedName.pdf")
+        }
+        startActivityForResult(intent, RC_CREATE_PDF)
+    }
+
+    override fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: android.content.Intent?
+    ) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == RC_CREATE_PDF && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            exportWebViewToPdfUri(uri)
+        }
+    }
+
+    private fun exportWebViewToPdfUri(uri: android.net.Uri) {
+        val sharedPref = getSharedPreferences("UrduWriterPrefs", MODE_PRIVATE)
+        val pageSize = sharedPref.getString("pref_page_size", "A4") ?: "A4"
+        val isLandscape = sharedPref.getBoolean("pref_page_landscape", false)
+
+        val jobName = "${getString(R.string.app_name)} Document"
+        val printAdapter = getWrappedPrintAdapter(jobName)
+
+        var mediaSize = when (pageSize) {
+            "Letter" -> PrintAttributes.MediaSize.NA_LETTER
+            "Legal" -> PrintAttributes.MediaSize.NA_LEGAL
+            "A3" -> PrintAttributes.MediaSize.ISO_A3
+            "A5" -> PrintAttributes.MediaSize.ISO_A5
+            "Executive" -> PrintAttributes.MediaSize("EXECUTIVE", "Executive", 7250, 10500)
+            "Custom" -> {
+                val customWidth = sharedPref.getFloat("pref_custom_page_width", 8.27f)
+                val customHeight = sharedPref.getFloat("pref_custom_page_height", 11.69f)
+                val widthMils = Math.round(customWidth * 1000).toInt()
+                val heightMils = Math.round(customHeight * 1000).toInt()
+                PrintAttributes.MediaSize("CUSTOM_SIZE", "Custom", widthMils, heightMils)
+            }
+
+            else -> PrintAttributes.MediaSize.ISO_A4
+        }
+
+        if (isLandscape) {
+            mediaSize = mediaSize.asLandscape()
+        }
+
+        val printAttributes = PrintAttributes.Builder()
+            .setMediaSize(mediaSize)
+            .setResolution(PrintAttributes.Resolution("pdf", "pdf", 600, 600))
+            .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+            .build()
+
+        try {
+            val pfd = contentResolver.openFileDescriptor(uri, "w")
+            if (pfd == null) {
+                Toast.makeText(this, "فائل بنانے میں ناکامی", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            val progressDialog = AlertDialog.Builder(this)
+                .setTitle("پی ڈی ایف فائل بن رہی ہے")
+                .setMessage("براہ کرم انتظار کریں...")
+                .setCancelable(false)
+                .create()
+            progressDialog.show()
+
+            android.print.PdfPrinter.print(
+                printAdapter,
+                printAttributes,
+                pfd,
+                object : android.print.PdfPrinter.Callback {
+                    override fun onSuccess() {
+                        try {
+                            pfd.close()
+                        } catch (_: Exception) {
+                        }
+
+                        runOnUiThread {
+                            progressDialog.dismiss()
+                            Toast.makeText(
+                                this@EditorActivity,
+                                "پی ڈی ایف فائل براہ راست محفوظ ہو گئی ہے",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+
+                    override fun onFailure(error: String?) {
+                        try {
+                            pfd.close()
+                        } catch (_: Exception) {
+                        }
+
+                        runOnUiThread {
+                            progressDialog.dismiss()
+                            Toast.makeText(
+                                this@EditorActivity,
+                                "ایکسپورٹ میں ناکامی: $error",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                })
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "ایکسپورٹ میں خرابی: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun getWrappedPrintAdapter(jobName: String): PrintDocumentAdapter {
+        val originalAdapter = mEditor.createPrintDocumentAdapter(jobName)
+        return object : PrintDocumentAdapter() {
+            override fun onStart() {
+                runOnUiThread {
+                    mEditor.evaluateJavascript("javascript:preparePrint()", null)
+                }
+                originalAdapter.onStart()
+            }
+
+            override fun onLayout(
+                oldAttributes: PrintAttributes?,
+                newAttributes: PrintAttributes?,
+                cancellationSignal: CancellationSignal?,
+                callback: LayoutResultCallback?,
+                extras: Bundle?
+            ) {
+                originalAdapter.onLayout(
+                    oldAttributes,
+                    newAttributes,
+                    cancellationSignal,
+                    callback,
+                    extras
+                )
+            }
+
+            override fun onWrite(
+                pages: Array<out PageRange>?,
+                destination: ParcelFileDescriptor?,
+                cancellationSignal: CancellationSignal?,
+                callback: WriteResultCallback?
+            ) {
+                originalAdapter.onWrite(pages, destination, cancellationSignal, callback)
+            }
+
+            override fun onFinish() {
+                originalAdapter.onFinish()
+                runOnUiThread {
+                    mEditor.evaluateJavascript("javascript:restorePrint()", null)
+                }
+            }
+        }
     }
 
     // --- WebView/JavaScript Interop ---
@@ -520,5 +800,205 @@ class EditorActivity : AppCompatActivity() {
             execJs("setListBullet", bullet)
         }
         dialog.show(supportFragmentManager, "BulletDialogFragment")
+    }
+
+    private fun showPageLayoutDialog() {
+        val sharedPref = getSharedPreferences("UrduWriterPrefs", MODE_PRIVATE)
+        val currentSize = sharedPref.getString("pref_page_size", "A4") ?: "A4"
+        val currentMargin = sharedPref.getString("pref_page_margin", "0.75in") ?: "0.75in"
+        val currentLandscape = sharedPref.getBoolean("pref_page_landscape", false)
+
+        val dialogView = layoutInflater.inflate(R.layout.dialog_page_layout, null)
+
+        val spinnerSize = dialogView.findViewById<android.widget.Spinner>(R.id.spinnerPageSize)
+        val spinnerMargin = dialogView.findViewById<android.widget.Spinner>(R.id.spinnerPageMargin)
+        val layoutCustomMargins =
+            dialogView.findViewById<View>(R.id.layoutCustomMargins)
+
+        val editMarginTop = dialogView.findViewById<EditText>(R.id.editMarginTop)
+        val editMarginBottom =
+            dialogView.findViewById<EditText>(R.id.editMarginBottom)
+        val editMarginLeft = dialogView.findViewById<EditText>(R.id.editMarginLeft)
+        val editMarginRight = dialogView.findViewById<EditText>(R.id.editMarginRight)
+
+        val radioGroupOrientation =
+            dialogView.findViewById<android.widget.RadioGroup>(R.id.radioGroupOrientation)
+        val radioPortrait = dialogView.findViewById<android.widget.RadioButton>(R.id.radioPortrait)
+        val radioLandscape =
+            dialogView.findViewById<android.widget.RadioButton>(R.id.radioLandscape)
+
+        if (currentLandscape) {
+            radioLandscape.isChecked = true
+        } else {
+            radioPortrait.isChecked = true
+        }
+
+        val editPageWidth = dialogView.findViewById<EditText>(R.id.editPageWidth)
+        val editPageHeight = dialogView.findViewById<EditText>(R.id.editPageHeight)
+
+        val customWidth = sharedPref.getFloat("pref_custom_page_width", 8.27f)
+        val customHeight = sharedPref.getFloat("pref_custom_page_height", 11.69f)
+
+        // Setup Spinners
+        val sizeOptions = arrayOf("A4", "Letter", "Legal", "A3", "A5", "Executive", "Custom")
+        val sizeAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, sizeOptions)
+        sizeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinnerSize.adapter = sizeAdapter
+        spinnerSize.setSelection(sizeOptions.indexOf(currentSize).coerceAtLeast(0))
+
+        spinnerSize.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) {
+                val selectedSize = sizeOptions[position]
+                when (selectedSize) {
+                    "A4" -> {
+                        editPageWidth.setText("8.27")
+                        editPageHeight.setText("11.69")
+                        editPageWidth.isEnabled = false
+                        editPageHeight.isEnabled = false
+                    }
+
+                    "Letter" -> {
+                        editPageWidth.setText("8.5")
+                        editPageHeight.setText("11.0")
+                        editPageWidth.isEnabled = false
+                        editPageHeight.isEnabled = false
+                    }
+
+                    "Legal" -> {
+                        editPageWidth.setText("8.5")
+                        editPageHeight.setText("14.0")
+                        editPageWidth.isEnabled = false
+                        editPageHeight.isEnabled = false
+                    }
+
+                    "A3" -> {
+                        editPageWidth.setText("11.69")
+                        editPageHeight.setText("16.54")
+                        editPageWidth.isEnabled = false
+                        editPageHeight.isEnabled = false
+                    }
+
+                    "A5" -> {
+                        editPageWidth.setText("5.83")
+                        editPageHeight.setText("8.27")
+                        editPageWidth.isEnabled = false
+                        editPageHeight.isEnabled = false
+                    }
+
+                    "Executive" -> {
+                        editPageWidth.setText("7.25")
+                        editPageHeight.setText("10.5")
+                        editPageWidth.isEnabled = false
+                        editPageHeight.isEnabled = false
+                    }
+
+                    "Custom" -> {
+                        editPageWidth.setText(customWidth.toString())
+                        editPageHeight.setText(customHeight.toString())
+                        editPageWidth.isEnabled = true
+                        editPageHeight.isEnabled = true
+                    }
+                }
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
+        val marginOptions = arrayOf(
+            "نارمل (0.75 انچ)",
+            "تنگ (0.5 انچ)",
+            "چوڑا (1.0 انچ)",
+            "کوئی حاشیہ نہیں (0 انچ)",
+            "اپنی مرضی کا (Custom)"
+        )
+        val marginValues = arrayOf("0.75in", "0.5in", "1.0in", "0in", "custom")
+        val marginAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, marginOptions)
+        marginAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinnerMargin.adapter = marginAdapter
+
+        // Check if currentMargin is custom
+        val presetMarginIndex = marginValues.indexOf(currentMargin)
+        if (presetMarginIndex != -1) {
+            spinnerMargin.setSelection(presetMarginIndex)
+            layoutCustomMargins.visibility = View.GONE
+        } else {
+            // It's custom! Set spinner selection to "custom"
+            spinnerMargin.setSelection(marginValues.indexOf("custom"))
+            layoutCustomMargins.visibility = View.VISIBLE
+
+            // Parse custom margin value e.g. "0.75in 0.75in 0.75in 0.75in" (top right bottom left)
+            val parts = currentMargin.split(" ")
+            if (parts.size == 4) {
+                editMarginTop.setText(parts[0].replace("in", ""))
+                editMarginRight.setText(parts[1].replace("in", ""))
+                editMarginBottom.setText(parts[2].replace("in", ""))
+                editMarginLeft.setText(parts[3].replace("in", ""))
+            }
+        }
+
+        // Show/hide custom margins layout dynamically based on selection
+        spinnerMargin.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) {
+                if (marginValues[position] == "custom") {
+                    layoutCustomMargins.visibility = View.VISIBLE
+                } else {
+                    layoutCustomMargins.visibility = View.GONE
+                }
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("صفحہ کی ترتیب (Page Layout)")
+            .setView(dialogView)
+            .setPositiveButton("ٹھیک ہے") { _, _ ->
+                val selectedSize = sizeOptions[spinnerSize.selectedItemPosition]
+                val selectedLandscape = radioLandscape.isChecked
+
+                var selectedMargin = marginValues[spinnerMargin.selectedItemPosition]
+                if (selectedMargin == "custom") {
+                    val topVal = editMarginTop.text.toString().toDoubleOrNull() ?: 0.75
+                    val rightVal = editMarginRight.text.toString().toDoubleOrNull() ?: 0.75
+                    val bottomVal = editMarginBottom.text.toString().toDoubleOrNull() ?: 0.75
+                    val leftVal = editMarginLeft.text.toString().toDoubleOrNull() ?: 0.75
+
+                    selectedMargin = "${topVal}in ${rightVal}in ${bottomVal}in ${leftVal}in"
+                }
+
+                val finalWidth = editPageWidth.text.toString().toFloatOrNull() ?: 8.27f
+                val finalHeight = editPageHeight.text.toString().toFloatOrNull() ?: 11.69f
+
+                // Save to shared preferences
+                sharedPref.edit().apply {
+                    putString("pref_page_size", selectedSize)
+                    putString("pref_page_margin", selectedMargin)
+                    putBoolean("pref_show_guidelines", false)
+                    putInt("pref_guideline_offset", 0)
+                    putBoolean("pref_page_landscape", selectedLandscape)
+                    putFloat("pref_custom_page_width", finalWidth)
+                    putFloat("pref_custom_page_height", finalHeight)
+                    apply()
+                }
+
+                // Apply to editor WebView
+                mEditor.evaluateJavascript(
+                    "javascript:setPageSettings('$selectedSize', '$selectedMargin', false, 0, $selectedLandscape, $finalWidth, $finalHeight);",
+                    null
+                )
+                Toast.makeText(this, "صفحہ کی ترتیب لاگو ہو گئی", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("منسوخ کریں", null)
+            .show()
     }
 }

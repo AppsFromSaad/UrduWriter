@@ -31,8 +31,8 @@ android {
         applicationId = "com.sf.urduwriter"
         minSdk = 27
         targetSdk = 36
-        versionCode = 16
-        versionName = "1.6.0"
+        versionCode = 19
+        versionName = "1.6.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -72,7 +72,7 @@ android {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.18.0")
+    implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("com.google.android.material:material:1.14.0")
     implementation("androidx.constraintlayout:constraintlayout:2.2.1")

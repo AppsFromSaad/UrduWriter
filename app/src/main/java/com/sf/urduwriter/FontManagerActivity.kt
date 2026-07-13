@@ -24,7 +24,7 @@ class FontManagerActivity : AppCompatActivity() {
     private lateinit var fontAdapter: FontAdapter
 
     private val pickFontsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
+        if (result.resultCode == RESULT_OK) {
             result.data?.let {
                 if (it.clipData != null) {
                     for (i in 0 until it.clipData!!.itemCount) {
@@ -51,24 +51,31 @@ class FontManagerActivity : AppCompatActivity() {
             onBackPressedDispatcher.onBackPressed()
         }
 
-        // Set custom font for header
-        try {
-            val jameelNooriFont = android.graphics.Typeface.createFromAsset(assets, "fonts/Jameel_noori_nastaleeq.ttf")
-            // Apply font to toolbar title and header title
-            binding.toolbar.post {
-                for (i in 0 until binding.toolbar.childCount) {
-                    val view = binding.toolbar.getChildAt(i)
-                    if (view is android.widget.TextView) {
-                        view.typeface = jameelNooriFont
+        // Set custom font for header asynchronously
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val jameelNooriFont = FontManager.getFont(
+                    this@FontManagerActivity,
+                    "fonts/Jameel_noori_nastaleeq.ttf"
+                )
+                if (jameelNooriFont != null) {
+                    withContext(Dispatchers.Main) {
+                        // Apply font to toolbar title and header title
+                        for (i in 0 until binding.toolbar.childCount) {
+                            val view = binding.toolbar.getChildAt(i)
+                            if (view is android.widget.TextView) {
+                                view.typeface = jameelNooriFont
+                            }
+                        }
+                        // Apply font to all textviews in the appbar layout
+                        (binding.toolbar.parent as? com.google.android.material.appbar.AppBarLayout)?.let {
+                            applyFontToViewGroup(it, jameelNooriFont)
+                        }
                     }
                 }
+            } catch (e: Exception) {
+                // Font not found
             }
-            // Apply font to all textviews in the appbar layout
-            (binding.toolbar.parent as? com.google.android.material.appbar.AppBarLayout)?.let { 
-                applyFontToViewGroup(it, jameelNooriFont) 
-            }
-        } catch (e: Exception) {
-            // Font not found
         }
 
         setupRecyclerView()
