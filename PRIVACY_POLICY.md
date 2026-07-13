@@ -1,4 +1,4 @@
-# Privacy Policy for Urdu Writer
+# Privacy Policy for our all Apps
 
 **Last updated:** [Date]
 
