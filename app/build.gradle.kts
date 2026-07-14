@@ -31,8 +31,8 @@ android {
         applicationId = "com.sf.urduwriter"
         minSdk = 27
         targetSdk = 36
-        versionCode = 20
-        versionName = "1.6.4"
+        versionCode = 23
+        versionName = "1.6.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

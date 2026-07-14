@@ -257,20 +257,46 @@
                 printSizeStr = printSizeStr + ' ' + printOrientation;
             }
             
-            // Parse top and bottom margins from marginValue to compute correct guideline repetitions
-            let marginTop = '0.75in';
-            let marginBottom = '0.75in';
-            const marginParts = marginValue.trim().split(/\s+/);
-            if (marginParts.length === 1) {
-                marginTop = marginParts[0];
-                marginBottom = marginParts[0];
-            } else if (marginParts.length === 2) {
-                marginTop = marginParts[0];
-                marginBottom = marginParts[0];
-            } else if (marginParts.length >= 3) {
-                marginTop = marginParts[0];
-                marginBottom = marginParts[2];
+            // Helper to compensate for Android print bottom margin bias
+            function adjustBottomMarginForPrint(marginStr) {
+                if (!marginStr) return '0.75in';
+                const val = parseFloat(marginStr);
+                if (isNaN(val) || val <= 0) return marginStr;
+                
+                if (marginStr.endsWith('in')) {
+                    return Math.max(0, val - 0.12).toFixed(2) + 'in';
+                } else if (marginStr.endsWith('mm')) {
+                    return Math.max(0, val - 3.0).toFixed(2) + 'mm';
+                } else if (marginStr.endsWith('px')) {
+                    return Math.max(0, val - 12).toFixed(2) + 'px';
+                }
+                return marginStr;
             }
+
+            // Parse individual margins for print and screen
+            const parts = marginValue.trim().split(/\s+/);
+            let marginTop = '0.75in';
+            let marginRight = '0.75in';
+            let marginBottom = '0.75in';
+            let marginLeft = '0.75in';
+            
+            if (parts.length === 1) {
+                marginTop = marginRight = marginBottom = marginLeft = parts[0];
+            } else if (parts.length === 2) {
+                marginTop = marginBottom = parts[0];
+                marginRight = marginLeft = parts[1];
+            } else if (parts.length === 3) {
+                marginTop = parts[0];
+                marginRight = marginLeft = parts[1];
+                marginBottom = parts[2];
+            } else if (parts.length >= 4) {
+                marginTop = parts[0];
+                marginRight = parts[1];
+                marginBottom = parts[2];
+                marginLeft = parts[3];
+            }
+
+            const adjustedBottomPrint = adjustBottomMarginForPrint(marginBottom);
 
             root.style.setProperty('--page-width', width);
             root.style.setProperty('--page-height', height);
@@ -291,7 +317,7 @@
                 @media print {
                     @page {
                         size: ${printSizeStr};
-                        margin: ${marginValue};
+                        margin: ${marginTop} ${marginRight} ${adjustedBottomPrint} ${marginLeft};
                     }
                 }
             `;
@@ -360,14 +386,25 @@
                 el.removeAttribute("size");
                 
                 const parentStyle = window.getComputedStyle(el.parentNode);
-                const originalSize = parseInt(parentStyle.fontSize, 10) || 22;
-                
-                let newSize = originalSize + numericDelta;
-                if (newSize < 8) newSize = 8;
-                if (newSize > 150) newSize = 150;
+                const baseOriginalSize = parseInt(parentStyle.fontSize, 10) || 22;
+                let baseNewSize = baseOriginalSize + numericDelta;
+                if (baseNewSize < 8) baseNewSize = 8;
+                if (baseNewSize > 150) baseNewSize = 150;
+
+                // Adjust any inner elements with explicit inline font-size relatively
+                const innerElements = el.querySelectorAll('*');
+                innerElements.forEach(child => {
+                    if (child.style.fontSize) {
+                        const childSize = parseInt(child.style.fontSize, 10) || baseOriginalSize;
+                        let newChildSize = childSize + numericDelta;
+                        if (newChildSize < 8) newChildSize = 8;
+                        if (newChildSize > 150) newChildSize = 150;
+                        child.style.fontSize = newChildSize + "px";
+                    }
+                });
 
                 const span = document.createElement('span');
-                span.style.fontSize = newSize + "px";
+                span.style.fontSize = baseNewSize + "px";
                 if (el.style.fontFamily) span.style.fontFamily = el.style.fontFamily;
                 if (el.style.color) span.style.color = el.style.color;
                 if (el.face) span.style.fontFamily = el.face;
@@ -521,6 +558,15 @@
                     if (el.color) span.style.color = el.color;
 
                     while (el.firstChild) span.appendChild(el.firstChild);
+                    
+                    // Clear font-size of any child elements inside selection so they inherit the new size
+                    span.querySelectorAll('*').forEach(child => {
+                        child.style.fontSize = '';
+                        if (!child.getAttribute('style')) {
+                            child.removeAttribute('style');
+                        }
+                    });
+
                     el.parentNode.replaceChild(span, el);
 
                     if (!firstSpan) firstSpan = span;

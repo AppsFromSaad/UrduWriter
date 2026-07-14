@@ -99,10 +99,6 @@ class SymbolDialogFragment : DialogFragment() {
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
-        
-        if (subsetNames.size > 3) {
-            binding.subsetSpinner.setSelection(3) // Default to Arabic if available
-        }
     }
 
     private fun updateSymbolGrid() {
@@ -111,14 +107,32 @@ class SymbolDialogFragment : DialogFragment() {
 
         val typeface = getTypeface(selectedFontName)
 
-        val symbols = if (selectedSubsetName == "All") {
+        val rawSymbols = if (selectedSubsetName == "All") {
             subsets.values.flatMap { it.map { charCode -> charCode.toChar().toString() } }
         } else {
             val range = subsets[selectedSubsetName]
             range?.map { it.toChar().toString() } ?: emptyList()
         }
 
-        val adapter = SymbolGridAdapter(symbols.map { RecentSymbol(it, selectedFontName) }, typeface)
+        val paint = android.graphics.Paint()
+        paint.typeface = typeface
+
+        val filteredSymbols = rawSymbols.filter { symbol ->
+            val charCode = symbol.firstOrNull()?.code ?: 0
+            if (Character.isISOControl(charCode) || Character.isWhitespace(charCode) ||
+                charCode == 0x00A0 || charCode == 0x200B || charCode == 0x200C ||
+                charCode == 0x200D || charCode == 0xFEFF
+            ) {
+                false
+            } else if (!paint.hasGlyph(symbol)) {
+                false
+            } else {
+                isGlyphVisible(symbol, paint)
+            }
+        }
+
+        val adapter =
+            SymbolGridAdapter(filteredSymbols.map { RecentSymbol(it, selectedFontName) }, typeface)
         binding.symbolsGrid.adapter = adapter
         binding.symbolsGrid.onItemClickListener = AdapterView.OnItemClickListener { _, _, position, _ ->
             val item = adapter.getItem(position)
@@ -239,6 +253,48 @@ class SymbolDialogFragment : DialogFragment() {
         return typeface
     }
 
+    private fun isGlyphVisible(symbol: String, paint: android.graphics.Paint): Boolean {
+        if (paint.measureText(symbol) <= 0) return false
+
+        val width = 32
+        val height = 32
+        val bitmap = android.graphics.Bitmap.createBitmap(
+            width,
+            height,
+            android.graphics.Bitmap.Config.ARGB_8888
+        )
+        val canvas = android.graphics.Canvas(bitmap)
+
+        bitmap.eraseColor(android.graphics.Color.TRANSPARENT)
+
+        // Temporarily configure paint to draw white test glyph
+        val oldColor = paint.color
+        val oldTextSize = paint.textSize
+
+        paint.color = android.graphics.Color.WHITE
+        paint.textSize = 20f
+
+        canvas.drawText(symbol, 4f, 24f, paint)
+
+        // Restore paint properties
+        paint.color = oldColor
+        paint.textSize = oldTextSize
+
+        var hasVisiblePixels = false
+        for (py in 0 until height) {
+            for (px in 0 until width) {
+                if (bitmap.getPixel(px, py) != android.graphics.Color.TRANSPARENT) {
+                    hasVisiblePixels = true
+                    break
+                }
+            }
+            if (hasVisiblePixels) break
+        }
+
+        bitmap.recycle()
+        return hasVisiblePixels
+    }
+
     inner class SymbolGridAdapter(
         private val symbols: List<RecentSymbol>,
         private val defaultTypeface: Typeface?
@@ -253,9 +309,21 @@ class SymbolDialogFragment : DialogFragment() {
                 val size48dp = (48 * context.resources.displayMetrics.density).toInt()
                 TextView(context).apply {
                     layoutParams = ViewGroup.LayoutParams(size48dp, size48dp)
-                    textSize = 24f
+                    textSize = 22f
                     gravity = android.view.Gravity.CENTER
-                    setTextColor(android.graphics.Color.BLACK)
+                    setTextColor(android.graphics.Color.parseColor("#1E293B")) // Slate 800
+
+                    // Premium keycap styling
+                    val bg = android.graphics.drawable.GradientDrawable().apply {
+                        setColor(android.graphics.Color.parseColor("#F1F5F9")) // Slate 100
+                        cornerRadius =
+                            10 * context.resources.displayMetrics.density // Rounded corners
+                        setStroke(
+                            (0.5 * context.resources.displayMetrics.density).toInt(),
+                            android.graphics.Color.parseColor("#E2E8F0")
+                        ) // Slate 200 border
+                    }
+                    background = bg
                 }
             } else {
                 convertView as TextView

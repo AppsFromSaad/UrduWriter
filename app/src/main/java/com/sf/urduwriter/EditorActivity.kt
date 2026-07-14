@@ -32,6 +32,8 @@ import android.util.JsonReader
 import android.util.JsonToken
 import java.io.File
 import java.io.FileOutputStream
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
 class EditorActivity : AppCompatActivity() {
 
@@ -53,6 +55,18 @@ class EditorActivity : AppCompatActivity() {
         enableEdgeToEdge()
         binding = ActivityEditorBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        ViewCompat.setOnApplyWindowInsetsListener(binding.editor) { v, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            val bottomInset = Math.max(systemBars.bottom, ime.bottom)
+
+            val params =
+                v.layoutParams as androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams
+            params.bottomMargin = bottomInset
+            v.layoutParams = params
+            insets
+        }
 
         setupEditor()
         setupToolbar()
@@ -170,8 +184,6 @@ class EditorActivity : AppCompatActivity() {
         binding.symbolsButton.setOnClickListener { showSymbolsDialog() }
         binding.colorPickerButton.setOnClickListener { showColorPickerDialog() }
         binding.fontSizeButton.setOnClickListener { showFontSizeDialog() }
-        binding.fontSizeUpButton.setOnClickListener { execJs("changeFontSize", "2") }
-        binding.fontSizeDownButton.setOnClickListener { execJs("changeFontSize", "-2") }
         binding.pageLayoutButton.setOnClickListener { showPageLayoutDialog() }
     }
 
@@ -1000,5 +1012,16 @@ class EditorActivity : AppCompatActivity() {
             }
             .setNegativeButton("منسوخ کریں", null)
             .show()
+    }
+
+    override fun startActionMode(callback: android.view.ActionMode.Callback?): android.view.ActionMode? {
+        return super.startActionMode(callback, android.view.ActionMode.TYPE_FLOATING)
+    }
+
+    override fun startActionMode(
+        callback: android.view.ActionMode.Callback?,
+        type: Int
+    ): android.view.ActionMode? {
+        return super.startActionMode(callback, android.view.ActionMode.TYPE_FLOATING)
     }
 }
